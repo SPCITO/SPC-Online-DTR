@@ -2,6 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { motion } from "framer-motion";
+import {
+  ArrowLeft,
+  CalendarDays,
+  Clock3,
+  TrendingUp,
+  TriangleAlert,
+  BriefcaseBusiness,
+} from "lucide-react";
 
 export default function MonthlyDashboard() {
   const [user, setUser] = useState<any>(null);
@@ -9,17 +18,13 @@ export default function MonthlyDashboard() {
   const [selectedDay, setSelectedDay] = useState<any>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
 
-  // -----------------------
   // LOAD USER
-  // -----------------------
   useEffect(() => {
     const stored = localStorage.getItem("user");
     if (stored) setUser(JSON.parse(stored));
   }, []);
 
-  // -----------------------
   // FETCH DATA
-  // -----------------------
   const fetchMonthly = async () => {
     if (!user) return;
 
@@ -42,15 +47,13 @@ export default function MonthlyDashboard() {
 
   if (!data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white text-green-800">
+      <div className="min-h-screen flex items-center justify-center bg-[#f4f7f5] text-emerald-700 text-lg font-semibold">
         Loading monthly attendance...
       </div>
     );
   }
 
-  // -----------------------
   // CALENDAR SETUP
-  // -----------------------
   const monthStart = new Date(
     currentDate.getFullYear(),
     currentDate.getMonth(),
@@ -71,9 +74,7 @@ export default function MonthlyDashboard() {
   for (let i = 0; i < startDay; i++) daysArray.push(null);
   for (let i = 1; i <= totalDays; i++) daysArray.push(i);
 
-  // -----------------------
   // HELPERS
-  // -----------------------
   const getDayRecord = (day: number) => {
     const fullDate = new Date(
       currentDate.getFullYear(),
@@ -100,6 +101,7 @@ export default function MonthlyDashboard() {
 
   const isLate = (date: string) => {
     const d = new Date(date);
+
     return (
       d.getHours() > 8 ||
       (d.getHours() === 8 && d.getMinutes() > 30)
@@ -117,114 +119,271 @@ export default function MonthlyDashboard() {
     const weekday = isWeekday(fullDate);
 
     if (!record && past && weekday)
-      return "bg-red-100 text-red-600";
+      return "bg-red-100 text-red-600 border-red-200";
 
     if (!record)
-      return "bg-gray-100 text-gray-400";
+      return "bg-slate-100 text-slate-400 border-slate-200";
 
     if (isLate(record.first_in))
-      return "bg-yellow-200 text-yellow-800";
+      return "bg-yellow-100 text-yellow-700 border-yellow-200";
 
-    return "bg-green-200 text-green-800";
-  };
-
-  const getTooltip = (day: number, record: any) => {
-    const fullDate = new Date(
-      currentDate.getFullYear(),
-      currentDate.getMonth(),
-      day
-    );
-
-    if (!isWeekday(fullDate)) return "Weekend";
-    if (!isPastDay(fullDate)) return "Future date";
-    if (!record) return "Absent";
-
-    return isLate(record.first_in) ? "Late" : "Present";
+    return "bg-emerald-100 text-emerald-700 border-emerald-200";
   };
 
   const progress =
     (parseFloat(data.summary.total_hours) / 160) * 100;
 
-  // -----------------------
-  // UI
-  // -----------------------
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-[#f4f7f5] overflow-x-hidden">
 
-      {/* HEADER */}
-      <div className="bg-gradient-to-r from-green-900 via-green-800 to-green-700 pt-10 pb-28 px-6 shadow-xl">
-        <div className="max-w-5xl mx-auto flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-white">
-              Monthly Attendance
-            </h1>
-            <p className="text-green-200 text-sm">
-              Track your attendance performance
-            </p>
-          </div>
-
-          <button
-            onClick={() => (window.location.href = "/dashboard")}
-            className="px-4 py-2 rounded-xl bg-white/10 border border-white/20 text-white hover:bg-white/20 transition"
-          >
-            ← Dashboard
-          </button>
-        </div>
+      {/* BG */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-[-120px] left-[-120px] w-[320px] h-[320px] bg-emerald-200/40 blur-3xl rounded-full" />
+        <div className="absolute bottom-[-120px] right-[-120px] w-[320px] h-[320px] bg-green-200/40 blur-3xl rounded-full" />
       </div>
 
-      {/* MAIN */}
-      <div className="flex-1 flex justify-center px-6 -mt-20 pb-16">
-        <div className="w-full max-w-5xl space-y-6">
+      <div className="relative px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+
+        <div className="max-w-6xl mx-auto space-y-7">
+
+          {/* HEADER */}
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
+            className="
+              rounded-[36px]
+
+              bg-white/80
+              backdrop-blur-2xl
+
+              border border-white/70
+
+              shadow-[0_15px_50px_rgba(0,0,0,0.08)]
+
+              p-6 sm:p-8
+            "
+          >
+
+            <div className="flex flex-col lg:flex-row justify-between gap-6 lg:items-center">
+
+              <div>
+
+                <p className="text-xs tracking-[0.28em] uppercase text-emerald-600 font-semibold mb-3">
+                  Performance Overview
+                </p>
+
+                <h1 className="text-3xl sm:text-5xl font-black text-slate-900">
+                  Monthly Attendance
+                </h1>
+
+                <p className="text-slate-500 mt-3">
+                  Track your attendance performance
+                </p>
+
+              </div>
+
+              <motion.button
+                whileTap={{ scale: 0.96 }}
+                onClick={() => (window.location.href = "/dashboard")}
+                className="
+                  flex items-center justify-center gap-2
+
+                  px-6 py-4
+
+                  rounded-2xl
+
+                  bg-[#0f172a]
+                  hover:bg-slate-800
+
+                  text-white
+                  font-semibold
+
+                  shadow-[0_10px_30px_rgba(15,23,42,0.22)]
+
+                  transition-all duration-300
+
+                  w-full sm:w-auto
+                "
+              >
+                <ArrowLeft size={18} />
+                Dashboard
+              </motion.button>
+
+            </div>
+
+          </motion.div>
 
           {/* SUMMARY */}
-          <div className="grid md:grid-cols-3 gap-4">
-            <div className="bg-white p-5 rounded-2xl shadow">
-              <p className="text-gray-500 text-sm">Total Hours</p>
-              <h2 className="text-2xl font-bold text-green-700">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+
+            {/* TOTAL HOURS */}
+            <motion.div
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+              className="
+                rounded-[32px]
+
+                bg-gradient-to-br
+                from-[#07152f]
+                via-[#081b3d]
+                to-[#0b3b2e]
+
+                p-6
+
+                text-white
+
+                shadow-[0_15px_40px_rgba(0,0,0,0.14)]
+              "
+            >
+
+              <div className="flex items-center gap-2 text-emerald-200/80 text-sm uppercase tracking-[0.2em]">
+                <Clock3 size={16} />
+                Total Hours
+              </div>
+
+              <h2 className="text-4xl font-black mt-4">
                 {data.summary.total_hours}
               </h2>
-            </div>
 
-            <div className="bg-white p-5 rounded-2xl shadow">
-              <p className="text-gray-500 text-sm">Late Days</p>
-              <h2 className="text-2xl font-bold text-yellow-600">
+            </motion.div>
+
+            {/* LATE DAYS */}
+            <motion.div
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45 }}
+              className="
+                rounded-[32px]
+
+                bg-white/90
+                backdrop-blur-xl
+
+                border border-white
+
+                p-6
+
+                shadow-[0_10px_35px_rgba(0,0,0,0.07)]
+              "
+            >
+
+              <div className="flex items-center gap-2 text-slate-500 text-sm uppercase tracking-[0.2em]">
+                <TriangleAlert size={16} />
+                Late Days
+              </div>
+
+              <h2 className="text-4xl font-black mt-4 text-yellow-600">
                 {data.summary.late_days}
               </h2>
-            </div>
 
-            <div className="bg-white p-5 rounded-2xl shadow">
-              <p className="text-gray-500 text-sm">Days Worked</p>
-              <h2 className="text-2xl font-bold text-green-700">
+            </motion.div>
+
+            {/* DAYS WORKED */}
+            <motion.div
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="
+                rounded-[32px]
+
+                bg-white/90
+                backdrop-blur-xl
+
+                border border-white
+
+                p-6
+
+                shadow-[0_10px_35px_rgba(0,0,0,0.07)]
+              "
+            >
+
+              <div className="flex items-center gap-2 text-slate-500 text-sm uppercase tracking-[0.2em]">
+                <BriefcaseBusiness size={16} />
+                Days Worked
+              </div>
+
+              <h2 className="text-4xl font-black mt-4 text-emerald-700">
                 {data.summary.total_days}
               </h2>
-            </div>
+
+            </motion.div>
+
           </div>
 
           {/* PROGRESS */}
-          <div className="bg-white p-5 rounded-2xl shadow">
-            <p className="text-sm text-gray-500 mb-2">
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55 }}
+            className="
+              rounded-[36px]
+
+              bg-white/92
+              backdrop-blur-2xl
+
+              border border-white
+
+              shadow-[0_15px_50px_rgba(0,0,0,0.08)]
+
+              p-6 sm:p-8
+            "
+          >
+
+            <div className="flex items-center gap-2 text-slate-500 text-sm uppercase tracking-[0.2em]">
+              <TrendingUp size={16} />
               Monthly Progress
-            </p>
-            <div className="w-full bg-gray-200 rounded-full h-3">
-              <div
-                className="bg-green-600 h-3 rounded-full"
-                style={{ width: `${Math.min(progress, 100)}%` }}
-              />
             </div>
-            <p className="text-xs mt-2 text-gray-500">
-              {progress.toFixed(1)}% of 160 hours
-            </p>
-          </div>
 
-            <p className="text-sm text-gray-500 mb-2">
-              Select a date to view attendance details
+            <div className="mt-5 w-full h-4 rounded-full bg-slate-200 overflow-hidden">
+
+              <div
+                className="
+                  h-full
+
+                  bg-gradient-to-r
+                  from-emerald-500
+                  to-green-600
+
+                  rounded-full
+
+                  transition-all duration-500
+                "
+                style={{
+                  width: `${Math.min(progress, 100)}%`,
+                }}
+              />
+
+            </div>
+
+            <p className="mt-3 text-slate-500 text-sm font-medium">
+              {progress.toFixed(1)}% of 160 monthly hours
             </p>
-            
+
+          </motion.div>
+
           {/* CALENDAR */}
-          <div className="bg-white p-5 rounded-2xl shadow">
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="
+              rounded-[36px]
 
-            {/* NAV */}
-            <div className="flex justify-between items-center mb-4">
+              bg-white/92
+              backdrop-blur-2xl
+
+              border border-white
+
+              shadow-[0_15px_50px_rgba(0,0,0,0.08)]
+
+              p-6 sm:p-8
+            "
+          >
+
+            {/* TOP */}
+            <div className="flex items-center justify-between mb-8">
+
               <button
                 onClick={() =>
                   setCurrentDate(
@@ -234,12 +393,23 @@ export default function MonthlyDashboard() {
                     )
                   )
                 }
-                className="px-3 py-1 bg-green-500 rounded-lg"
+                className="
+                  h-11 w-11
+
+                  rounded-2xl
+
+                  bg-slate-100
+                  hover:bg-slate-200
+
+                  text-slate-700
+
+                  transition
+                "
               >
                 ←
               </button>
 
-              <h2 className="font-semibold text-green-800">
+              <h2 className="text-2xl font-black text-slate-900">
                 {currentDate.toLocaleString("default", {
                   month: "long",
                   year: "numeric",
@@ -255,120 +425,222 @@ export default function MonthlyDashboard() {
                     )
                   )
                 }
-                className="px-3 py-1 bg-green-500 rounded-lg"
+                className="
+                  h-11 w-11
+
+                  rounded-2xl
+
+                  bg-slate-100
+                  hover:bg-slate-200
+
+                  text-slate-700
+
+                  transition
+                "
               >
                 →
               </button>
+
             </div>
 
             {/* WEEK */}
-            <div className="grid grid-cols-7 text-xs text-gray-400 text-center mb-2">
+            <div className="grid grid-cols-7 gap-2 mb-3">
               {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d) => (
-                <div key={d}>{d}</div>
+                <div
+                  key={d}
+                  className="
+                    text-center
+
+                    text-xs
+                    uppercase
+
+                    tracking-[0.16em]
+
+                    text-slate-400
+                    font-semibold
+                  "
+                >
+                  {d}
+                </div>
               ))}
             </div>
 
             {/* GRID */}
-            <div className="grid grid-cols-7 gap-2">
+            <div className="grid grid-cols-7 gap-3">
+
               {daysArray.map((day, i) => {
-                if (!day) return <div key={i} />;
+
+                if (!day) {
+                  return <div key={i} />;
+                }
 
                 const record = getDayRecord(day);
+
                 const color = getDayColor(day, record);
-                const tooltip = getTooltip(day, record);
 
                 const isSelected =
                   selectedDay &&
                   new Date(selectedDay.date).getDate() === day;
 
                 return (
-                  <div key={i} className="relative group">
-                    <button
-                      onClick={() => setSelectedDay(record)}
-                      className={`
-                        h-12 w-full rounded-lg border text-sm font-semibold
-                        flex items-center justify-center
-                        transition hover:scale-105
-                        ${color}
-                        ${isSelected ? "ring-2 ring-green-700 scale-105" : ""}
-                      `}
-                    >
-                      {day}
-                    </button>
 
-                    {/* TOOLTIP */}
-                    <div className="absolute bottom-full mb-1 hidden group-hover:block text-xs bg-black text-white px-2 py-1 rounded">
-                      {tooltip}
-                    </div>
-                  </div>
+                  <button
+                    key={i}
+                    onClick={() => setSelectedDay(record)}
+                    className={`
+                      h-14 rounded-2xl
+
+                      border
+
+                      font-bold
+
+                      transition-all duration-300
+
+                      hover:scale-[1.05]
+
+                      ${color}
+
+                      ${
+                        isSelected
+                          ? "ring-2 ring-emerald-600 scale-[1.05]"
+                          : ""
+                      }
+                    `}
+                  >
+                    {day}
+                  </button>
+
                 );
               })}
+
             </div>
 
             {/* LEGEND */}
-            <div className="flex gap-4 mt-4 text-sm text-gray-800 font-medium">
-              <div className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-green-500 rounded-full" />
+            <div className="flex flex-wrap gap-5 mt-8 text-sm font-semibold">
+
+              <div className="flex items-center gap-2 text-slate-700">
+                <span className="w-3 h-3 rounded-full bg-emerald-500" />
                 Present
               </div>
 
-              <div className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-yellow-400 rounded-full" />
+              <div className="flex items-center gap-2 text-slate-700">
+                <span className="w-3 h-3 rounded-full bg-yellow-400" />
                 Late
               </div>
 
-              <div className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-red-500 rounded-full" />
+              <div className="flex items-center gap-2 text-slate-700">
+                <span className="w-3 h-3 rounded-full bg-red-500" />
                 Absent
               </div>
-            </div>
 
             </div>
 
-            {/* SELECTED DAY */}
-            <div className="bg-white p-5 rounded-2xl shadow">
-              {selectedDay ? (
-                <>
-                  <h2 className="text-lg font-bold text-green-800">
-                    {new Date(selectedDay.date).toLocaleDateString()}
-                  </h2>
+          </motion.div>
 
-                  <p className="text-sm mt-2 text-gray-800 font-medium">
-                    Status:{" "}
-                    {isLate(selectedDay.first_in)
-                      ? "Late"
-                      : "On Time"}
-                  </p>
+          {/* DETAILS */}
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.65 }}
+            className="
+              rounded-[36px]
 
-                  <p className="text-sm text-gray-800 font-medium">
-                    Time In:{" "}
-                    {new Date(
-                      selectedDay.first_in
-                    ).toLocaleTimeString()}
-                  </p>
+              bg-white/92
+              backdrop-blur-2xl
 
-                  <p className="text-sm text-gray-800 font-medium">
-                    Time Out:{" "}
-                    {selectedDay.last_out
-                      ? new Date(
-                          selectedDay.last_out
-                        ).toLocaleTimeString()
-                      : "—"}
-                  </p>
+              border border-white
 
-                  <p className="text-sm text-gray-800 font-medium">
-                    Hours: {selectedDay.hours}
-                  </p>
-                </>
-              ) : (
-                <p className="text-gray-500 text-sm">
-                  Click a date to view details
+              shadow-[0_15px_50px_rgba(0,0,0,0.08)]
+
+              p-6 sm:p-8
+            "
+          >
+
+            {selectedDay ? (
+
+              <>
+
+                <div className="flex items-center gap-2 text-slate-500 text-sm uppercase tracking-[0.2em] mb-3">
+                  <CalendarDays size={16} />
+                  Attendance Details
+                </div>
+
+                <h2 className="text-3xl font-black text-slate-900">
+                  {new Date(selectedDay.date).toLocaleDateString()}
+                </h2>
+
+                <div className="mt-6 grid sm:grid-cols-2 gap-4">
+
+                  <div className="rounded-2xl bg-slate-50 p-5">
+                    <p className="text-slate-400 text-xs uppercase tracking-[0.16em]">
+                      Status
+                    </p>
+
+                    <h3 className="mt-2 text-xl font-black text-slate-900">
+                      {isLate(selectedDay.first_in)
+                        ? "Late"
+                        : "On Time"}
+                    </h3>
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-50 p-5">
+                    <p className="text-slate-400 text-xs uppercase tracking-[0.16em]">
+                      Hours Worked
+                    </p>
+
+                    <h3 className="mt-2 text-xl font-black text-slate-900">
+                      {selectedDay.hours}
+                    </h3>
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-50 p-5">
+                    <p className="text-slate-400 text-xs uppercase tracking-[0.16em]">
+                      Time In
+                    </p>
+
+                    <h3 className="mt-2 text-xl font-black text-slate-900">
+                      {new Date(
+                        selectedDay.first_in
+                      ).toLocaleTimeString()}
+                    </h3>
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-50 p-5">
+                    <p className="text-slate-400 text-xs uppercase tracking-[0.16em]">
+                      Time Out
+                    </p>
+
+                    <h3 className="mt-2 text-xl font-black text-slate-900">
+                      {selectedDay.last_out
+                        ? new Date(
+                            selectedDay.last_out
+                          ).toLocaleTimeString()
+                        : "—"}
+                    </h3>
+                  </div>
+
+                </div>
+
+              </>
+
+            ) : (
+
+              <div className="text-center py-10">
+
+                <p className="text-slate-400 text-lg">
+                  Select a date to view attendance details
                 </p>
-              )}
-            </div>
+
+              </div>
+
+            )}
+
+          </motion.div>
 
         </div>
+
       </div>
+
     </div>
   );
 }

@@ -1,63 +1,50 @@
 const API_URL = "http://localhost:5000/api";
 
-// 🔑 Get token from cookies
-const getToken = () => {
-  if (typeof document === "undefined") return null;
-
-  const cookie = document.cookie
-    .split("; ")
-    .find((row) => row.startsWith("token="));
-
-  return cookie ? cookie.split("=")[1] : null;
-};
-
-// 🔧 Generic request helper (IMPROVED)
 const request = async (endpoint: string, options: any = {}) => {
-  const token = getToken();
-
-  // 🚨 Prevent requests without token (except login)
-  if (!token && endpoint !== "/login") {
-    console.warn("⚠️ No token found. Blocking request:", endpoint);
-    throw new Error("Not authenticated");
-  }
-
-  const res = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-  });
-
-  const text = await res.text();
-
-  console.log(`📡 API [${endpoint}] →`, text);
-
-  let data;
   try {
-    data = JSON.parse(text);
-  } catch {
-    data = text;
-  }
+    const res = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
 
-  if (!res.ok) {
-    console.error("❌ API ERROR:", data);
-
-    // 🚨 Handle invalid token globally
-    if (data?.message === "Invalid token" || data?.message === "No token provided") {
-      console.warn("🔐 Token expired or invalid → logging out");
-
-      localStorage.clear();
-      document.cookie = "token=; Max-Age=0; path=/";
-
-      window.location.href = "/login";
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
     }
 
-    throw new Error(data?.message || "Something went wrong");
-  }
+    // ❗ Only throw for real errors (NOT logout edge cases)
+    if (!res.ok) {
+      // allow logout to fail silently
+      if (endpoint === "/logout") {
+        return { success: true };
+      }
 
-  return data;
+      if (res.status === 401) {
+        localStorage.removeItem("user");
+        window.location.href = "/login";
+        return;
+      }
+
+      throw new Error(data?.message || "Request failed");
+    }
+
+    return data;
+  } catch (err: any) {
+    console.error("Backend unreachable:", err);
+
+    // ❗ IMPORTANT: DO NOT throw for logout
+    if (endpoint === "/logout") {
+      return { success: true };
+    }
+
+    throw new Error("Backend is unreachable");
+  }
 };
 
 export const api = {
@@ -66,6 +53,11 @@ export const api = {
     request("/login", {
       method: "POST",
       body: JSON.stringify(data),
+    }),
+
+  logout: () =>
+    request("/logout", {
+      method: "POST",
     }),
 
   // ⏱️ DTR
@@ -94,7 +86,11 @@ export const api = {
     request(`/logs/me/${employee_id}`),
 
   // 📅 MONTHLY LOGS
-  getMonthlyLogs: (employee_id: string, year: number, month: number) =>
+  getMonthlyLogs: (
+    employee_id: string,
+    year: number,
+    month: number
+  ) =>
     request(`/monthly/${employee_id}/${year}/${month}`),
 
   // 👤 EMPLOYEES

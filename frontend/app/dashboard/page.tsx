@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { logout } from "@/lib/auth";
-import { LogOut, Clock, Activity } from "lucide-react";
+import {
+  LogOut,
+  Clock3,
+  Timer,
+  CalendarDays,
+  Activity,
+} from "lucide-react";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 
@@ -12,72 +19,128 @@ export default function Dashboard() {
   const [status, setStatus] = useState<"IN" | "OUT">("OUT");
   const [timeIn, setTimeIn] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState("");
+  const [currentDate, setCurrentDate] = useState("");
   const [workDuration, setWorkDuration] = useState("00:00:00");
   const [loading, setLoading] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const router = useRouter();
+
+  //LOGOUT FUNCTION
+  const logout = async () => {
+    try {
+      await api.logout();
+    } catch (err) {
+      console.warn("Logout request failed, forcing local logout");
+    }
+
+    localStorage.removeItem("user");
+    router.replace("/login");
+  };
 
   // LOAD USER
   useEffect(() => {
-    const stored = localStorage.getItem("user");
-    if (stored) setUser(JSON.parse(stored));
-  }, []);
+  const stored = localStorage.getItem("user");
 
-  // REAL-TIME CLOCK (SMOOTH)
+  if (stored) {
+    try {
+      setUser(JSON.parse(stored));
+    } catch {
+      localStorage.removeItem("user");
+    }
+  }
+
+  setAuthLoading(false);
+}, []);
+
+  // REAL-TIME CLOCK
   useEffect(() => {
-    const interval = setInterval(async () => {
+    const updateClock = async () => {
       try {
         const res = await api.getTime();
-        setCurrentTime(new Date(res.time).toLocaleTimeString());
+
+        const now = new Date(res.time);
+
+        setCurrentTime(
+          now.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          })
+        );
+
+        setCurrentDate(
+          now.toLocaleDateString([], {
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          })
+        );
       } catch {}
-    }, 1000);
+    };
+
+    updateClock();
+
+    const interval = setInterval(updateClock, 1000);
 
     return () => clearInterval(interval);
   }, []);
 
-  // REAL-TIME STATUS (FAST REFRESH)
+  // STATUS CHECK
   const checkStatus = async () => {
-    if (!user) return;
+    if (!user || authLoading) return;
 
     try {
       const res = await api.getStatus(user.employee_id);
       setStatus(res.status);
       setTimeIn(res.time_in);
     } catch (err) {
-      console.error(err);
+      console.warn("Status check failed");
     }
   };
 
   useEffect(() => {
-    if (user) {
-      checkStatus();
+    if (!user || authLoading) return;
 
-      const interval = setInterval(checkStatus, 3000); // 🔥 faster refresh
-      return () => clearInterval(interval);
-    }
-  }, [user]);
+    let active = true;
+
+    const loop = async () => {
+      while (active) {
+        await checkStatus();
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    };
+
+    loop();
+
+    return () => {
+      active = false;
+    };
+  }, [user, authLoading]);
 
   // LIVE WORK TIMER
   useEffect(() => {
     if (!timeIn) return;
 
     const interval = setInterval(() => {
-      const diff = new Date().getTime() - new Date(timeIn).getTime();
+      const diff =
+        new Date().getTime() - new Date(timeIn).getTime();
 
       const hrs = Math.floor(diff / 3600000);
       const mins = Math.floor((diff % 3600000) / 60000);
       const secs = Math.floor((diff % 60000) / 1000);
 
       setWorkDuration(
-        `${String(hrs).padStart(2, "0")}:${String(mins).padStart(
-          2,
-          "0"
-        )}:${String(secs).padStart(2, "0")}`
+        `${String(hrs).padStart(2, "0")}:${String(
+          mins
+        ).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
       );
     }, 1000);
 
     return () => clearInterval(interval);
   }, [timeIn]);
 
-  // ACTIONS WITH LOADING
+  // ACTIONS
   const handleTimeIn = async () => {
     setLoading(true);
     await api.timeIn(user.employee_id);
@@ -92,116 +155,465 @@ export default function Dashboard() {
     setLoading(false);
   };
 
-  if (!user) return null;
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-500">
+        Loading session...
+      </div>
+    );
+  }
 
-
+  if (!user) {
+    return null;
+  }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="min-h-screen bg-[#f3f7f4] overflow-x-hidden">
 
-      {/* 🟢 HEADER */}
-      <div className="bg-gradient-to-r from-green-900 via-green-800 to-green-700 pt-12 pb-44 px-6 shadow-xl relative">
+      {/* BACKGROUND EFFECTS */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-120px] left-[-120px] w-[320px] h-[320px] bg-green-300/20 blur-3xl rounded-full" />
+        <div className="absolute bottom-[-120px] right-[-120px] w-[320px] h-[320px] bg-emerald-300/20 blur-3xl rounded-full" />
+      </div>
 
-        <div className="max-w-5xl mx-auto">
+      {/* HERO */}
+        <div className="relative px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
 
-          {/* GLASS HEADER */}
-          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-6 shadow-lg flex justify-between items-center">
+          <div className="max-w-6xl mx-auto">
 
-            <div>
-              <h1 className="text-3xl font-bold text-white">
-                Welcome, {user.name}
-              </h1>
-              <p className="text-green-200 text-sm">
-                {user.employee_id}
-              </p>
-            </div>
+            {/* TOP HEADER */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35 }}
+              className="
+                relative overflow-hidden
 
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={logout}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl 
-                        bg-white/10 hover:bg-red-500/20 
-                        border border-white/20 text-white transition"
+                bg-white/85
+                backdrop-blur-2xl
+
+                border border-white/70
+
+                rounded-[34px]
+
+                px-5 sm:px-7
+                py-5 sm:py-6
+
+                flex flex-col sm:flex-row
+                gap-5
+                sm:items-center
+                justify-between
+
+                shadow-[0_12px_45px_rgba(0,0,0,0.08)]
+              "
             >
-              <LogOut size={16} />
-              Logout
-            </motion.button>
+
+              {/* LIGHT EFFECT */}
+              <div className="absolute inset-0 bg-gradient-to-br from-white/70 via-transparent to-green-100/40 pointer-events-none" />
+
+              {/* USER */}
+              <div className="relative min-w-0 z-10">
+
+                <p className="text-xs tracking-[0.22em] uppercase text-green-700/70 mb-2 font-semibold">
+                  Employee Dashboard
+                </p>
+
+                <h1
+                  className="
+                    text-[28px] sm:text-4xl
+                    font-black
+                    text-gray-900
+                    leading-tight
+                    break-words
+                  "
+                >
+                  Welcome, {user.name}
+                </h1>
+
+                <p className="text-gray-500 mt-2 text-sm font-medium">
+                  Employee ID: {user.employee_id}
+                </p>
+
+              </div>
+
+              {/* LOGOUT */}
+              <motion.button
+                whileTap={{ scale: 0.96 }}
+                onClick={logout}
+                className="
+                  relative z-10
+
+                  flex items-center justify-center gap-2
+
+                  px-5 py-3
+
+                  rounded-2xl
+
+                  bg-gray-900
+                  hover:bg-red-500
+
+                  text-white
+                  font-semibold
+
+                  transition-all duration-300
+
+                  shadow-lg
+
+                  w-full sm:w-auto
+                "
+              >
+                <LogOut size={16} />
+                Logout
+              </motion.button>
+
+            </motion.div>
+
+            {/* DIGITAL CLOCK CARD */}
+            <motion.div
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45 }}
+              className="mt-7"
+            >
+
+              <div
+                className="
+                  relative overflow-hidden
+
+                  bg-gradient-to-br
+                  from-[#0f172a]
+                  via-[#111827]
+                  to-[#052e16]
+
+                  rounded-[38px]
+
+                  border border-white/10
+
+                  shadow-[0_20px_70px_rgba(0,0,0,0.18)]
+
+                  p-5 sm:p-7 lg:p-8
+                "
+              >
+
+                {/* GLOW */}
+                <div className="absolute top-[-100px] right-[-100px] w-[220px] h-[220px] bg-green-400/20 blur-3xl rounded-full" />
+
+                <div
+                  className="
+                    relative
+
+                    grid lg:grid-cols-[1.35fr_0.85fr]
+                    gap-6 lg:gap-8
+                    items-center
+                  "
+                >
+
+                  {/* CLOCK SIDE */}
+                  <div className="flex flex-col items-center lg:items-start">
+
+                    {/* LABEL */}
+                    <div
+                      className="
+                        flex items-center gap-2
+
+                        text-green-200/80
+                        text-xs sm:text-sm
+                        tracking-[0.24em]
+                        uppercase
+
+                        mb-5
+                      "
+                    >
+                      <Clock3 size={16} />
+                      Live Company Time
+                    </div>
+
+                    {/* DIGITAL CLOCK */}
+                    <div className="flex items-center justify-center flex-wrap gap-2 sm:gap-3">
+
+                      {currentTime.replace(" ", "").split("").map((char, index) => (
+
+                        <div key={index}>
+
+                          {char === ":" ? (
+
+                            <div
+                              className="
+                                text-white/70
+                                font-black
+
+                                text-[34px]
+                                sm:text-[44px]
+                                md:text-[52px]
+
+                                px-1
+                              "
+                            >
+                              :
+                            </div>
+
+                          ) : (
+
+                            <div
+                              className="
+                                relative
+
+                                w-[48px]
+                                sm:w-[62px]
+                                md:w-[72px]
+
+                                h-[68px]
+                                sm:h-[84px]
+                                md:h-[96px]
+
+                                rounded-[20px]
+
+                                bg-white/10
+                                backdrop-blur-xl
+
+                                border border-white/10
+
+                                flex items-center justify-center
+
+                                shadow-[0_10px_30px_rgba(0,0,0,0.25)]
+
+                                overflow-hidden
+                              "
+                            >
+
+                              {/* INNER LIGHT */}
+                              <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent" />
+
+                              <span
+                                className="
+                                  relative z-10
+
+                                  text-white
+
+                                  font-black
+
+                                  text-[30px]
+                                  sm:text-[40px]
+                                  md:text-[48px]
+
+                                  tracking-[-0.05em]
+                                "
+                                style={{
+                                  fontVariantNumeric: "tabular-nums",
+                                }}
+                              >
+                                {char}
+                              </span>
+
+                            </div>
+
+                          )}
+
+                        </div>
+
+                      ))}
+
+                    </div>
+
+                    {/* DATE */}
+                    <div
+                      className="
+                        mt-5
+
+                        flex items-center gap-2
+
+                        text-green-100/80
+                        text-sm sm:text-base
+                        font-medium
+
+                        text-center lg:text-left
+                      "
+                    >
+                      <CalendarDays size={18} />
+                      {currentDate}
+                    </div>
+
+                  </div>
+
+                  {/* STATUS SIDE */}
+                  <div className="grid gap-4">
+
+                    {/* STATUS */}
+                    <div
+                      className="
+                        rounded-[28px]
+
+                        bg-white/10
+                        backdrop-blur-xl
+
+                        border border-white/10
+
+                        p-5
+                      "
+                    >
+
+                      <div className="flex items-center gap-3">
+
+                        <span
+                          className={`w-3.5 h-3.5 rounded-full animate-pulse ${
+                            status === "IN"
+                              ? "bg-green-400"
+                              : "bg-red-400"
+                          }`}
+                        />
+
+                        <p className="text-white/60 text-xs uppercase tracking-[0.22em]">
+                          Attendance Status
+                        </p>
+
+                      </div>
+
+                      <h2
+                        className={`
+                          mt-3
+                          text-4xl
+                          font-black
+
+                          ${
+                            status === "IN"
+                              ? "text-green-300"
+                              : "text-red-300"
+                          }
+                        `}
+                      >
+                        {status}
+                      </h2>
+
+                    </div>
+
+                    {/* WORK TIMER */}
+                    <div
+                      className="
+                        rounded-[28px]
+
+                        bg-white/10
+                        backdrop-blur-xl
+
+                        border border-white/10
+
+                        p-5
+                      "
+                    >
+
+                      <div className="flex items-center gap-2 text-white/60 text-xs uppercase tracking-[0.22em]">
+                        <Timer size={16} />
+                        Working Duration
+                      </div>
+
+                      <h2
+                        className="
+                          mt-3
+
+                          text-3xl sm:text-4xl
+                          font-black
+                          text-white
+
+                          tracking-tight
+                        "
+                        style={{
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {status === "IN"
+                          ? workDuration
+                          : "00:00:00"}
+                      </h2>
+
+                    </div>
+
+                    {/* SYSTEM */}
+                    <div
+                      className="
+                        rounded-[28px]
+
+                        bg-gradient-to-r
+                        from-green-500/10
+                        to-emerald-500/10
+
+                        border border-green-300/10
+
+                        p-5
+                      "
+                    >
+
+                      <div className="flex items-center gap-2 text-green-100 text-xs uppercase tracking-[0.22em]">
+                        <Activity size={16} />
+                        System Activity
+                      </div>
+
+                      <p className="text-white/75 mt-3 leading-relaxed text-sm">
+                        Your attendance is securely tracked in
+                        real-time with automated server syncing.
+                      </p>
+
+                    </div>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+            </motion.div>
 
           </div>
-
-         <div className="relative mt-10">
-
-        <div
-          className="
-            absolute left-1/2 -translate-x-1/2 translate-y-1/2
-            w-full max-w-4xl
-            bg-white/15 backdrop-blur-2xl
-            border border-white/20
-            rounded-3xl shadow-2xl
-            px-8 py-6
-            flex flex-wrap justify-between items-center gap-6 
-          "
-        >
-
-          {/* CURRENT TIME */}
-          <div>
-            <p className="text-green-200 text-sm">Current Time</p>
-            <h2 className="text-2xl font-bold text-white">
-              {currentTime}
-            </h2>
-          </div>
-
-          {/* STATUS */}
-          <div className="flex items-center gap-3">
-            <span
-              className={`w-3 h-3 rounded-full animate-pulse ${
-                status === "IN" ? "bg-green-400" : "bg-red-400"
-              }`}
-            />
-            <div>
-              <p className="text-green-200 text-sm">Status</p>
-              <h2 className="text-2xl font-bold text-white">
-                {status}
-              </h2>
-            </div>
-          </div>
-
-          {/* WORK TIMER */}
-          {status === "IN" && (
-            <div>
-              <p className="text-green-200 text-sm">Working</p>
-              <h2 className="text-2xl font-bold text-white">
-                {workDuration}
-              </h2>
-            </div>
-          )}
 
         </div>
 
-      </div>
-        </div>
-      </div>
+        {/* SPACING */}
+        <div className="h-10 sm:h-12" />
 
-      <div className="h-12"></div>
+      {/* MAIN CONTENT */}
+      <div className="relative px-4 sm:px-6 lg:px-8 pb-20">
 
-      {/* 🧩 MAIN */}
-      <div className="flex-1 flex justify-center px-6 -mt-5 pb-24">
+        <div className="max-w-6xl mx-auto space-y-7">
 
-        <div className="w-full max-w-5xl space-y-8">
+          {/* ACTIONS */}
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45 }}
+            className="
+              bg-white/95
+              backdrop-blur-xl
 
-          {/* 🟩 ACTION CARD */}
-          <div className="bg-white rounded-3xl shadow-2xl p-8 transition border border-gray-100 hover:shadow-2xl">
+              rounded-[32px]
 
-            <h3 className="text-lg font-semibold text-gray-700 mb-6">
-              Attendance Actions
-            </h3>
+              border border-white
 
-            <div className="grid grid-cols-2 gap-6">
+              shadow-[0_12px_50px_rgba(0,0,0,0.08)]
+
+              p-5 sm:p-7 lg:p-8
+            "
+          >
+
+            <div className="mb-7">
+
+              <p className="text-xs uppercase tracking-[0.22em] text-gray-400 mb-2">
+                Quick Actions
+              </p>
+
+              <h2 className="text-2xl sm:text-3xl font-black text-gray-800">
+                Attendance Actions
+              </h2>
+
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
 
               {/* TIME IN */}
               <motion.button
-                whileHover={{ scale: status !== "IN" ? 1.03 : 1 }}
-                whileTap={{ scale: status !== "IN" ? 0.95 : 1 }}
+                whileHover={{
+                  scale: status !== "IN" ? 1.02 : 1,
+                }}
+                whileTap={{
+                  scale: status !== "IN" ? 0.98 : 1,
+                }}
                 onClick={async () => {
                   try {
                     setLoading(true);
@@ -215,22 +627,44 @@ export default function Dashboard() {
                 }}
                 disabled={status === "IN" || loading}
                 className={`
-                  py-5 rounded-2xl font-semibold text-lg transition-all
-                  shadow-lg border backdrop-blur-md
+                  min-h-[90px]
+
+                  rounded-[28px]
+
+                  text-lg font-bold
+
+                  border
+
+                  transition-all duration-300
+
                   ${
                     status === "IN"
-                      ? "bg-gray-200 text-gray-500 cursor-not-allowed border-gray-300"
-                      : "bg-gradient-to-br from-green-500 to-green-600 text-white border-green-400 hover:shadow-xl"
+                      ? "bg-gray-200 text-gray-500 border-gray-300"
+                      : `
+                        bg-gradient-to-br from-green-500 to-green-600
+                        text-white
+                        border-green-400
+                        shadow-[0_10px_30px_rgba(34,197,94,0.30)]
+                        hover:shadow-[0_15px_40px_rgba(34,197,94,0.40)]
+                      `
                   }
                 `}
               >
-                {loading ? "Processing..." : status === "IN" ? "Already Timed In" : "Time In"}
+                {loading
+                  ? "Processing..."
+                  : status === "IN"
+                  ? "Already Timed In"
+                  : "Time In"}
               </motion.button>
 
               {/* TIME OUT */}
               <motion.button
-                whileHover={{ scale: status !== "OUT" ? 1.03 : 1 }}
-                whileTap={{ scale: status !== "OUT" ? 0.95 : 1 }}
+                whileHover={{
+                  scale: status !== "OUT" ? 1.02 : 1,
+                }}
+                whileTap={{
+                  scale: status !== "OUT" ? 0.98 : 1,
+                }}
                 onClick={async () => {
                   try {
                     setLoading(true);
@@ -244,57 +678,138 @@ export default function Dashboard() {
                 }}
                 disabled={status === "OUT" || loading}
                 className={`
-                  py-5 rounded-2xl font-semibold text-lg transition-all
-                  shadow-lg border backdrop-blur-md
+                  min-h-[90px]
+
+                  rounded-[28px]
+
+                  text-lg font-bold
+
+                  border
+
+                  transition-all duration-300
+
                   ${
                     status === "OUT"
-                      ? "bg-gray-200 text-gray-500 cursor-not-allowed border-gray-300"
-                      : "bg-gradient-to-br from-red-500 to-red-600 text-white border-red-400 hover:shadow-xl"
+                      ? "bg-gray-200 text-gray-500 border-gray-300"
+                      : `
+                        bg-gradient-to-br from-red-500 to-red-600
+                        text-white
+                        border-red-400
+                        shadow-[0_10px_30px_rgba(239,68,68,0.30)]
+                        hover:shadow-[0_15px_40px_rgba(239,68,68,0.40)]
+                      `
                   }
                 `}
               >
-                {loading ? "Processing..." : status === "OUT" ? "Not Timed In" : "Time Out"}
+                {loading
+                  ? "Processing..."
+                  : status === "OUT"
+                  ? "Not Timed In"
+                  : "Time Out"}
               </motion.button>
 
             </div>
-          </div>
 
-          {/* 🧭 NAVIGATION */}
-          <div className="grid md:grid-cols-2 gap-6">
+          </motion.div>
+
+          {/* NAVIGATION */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
             {/* LOGS */}
             <motion.div
-              whileHover={{ y: -6 }}
-              className="bg-white p-6 rounded-2xl shadow-lg border cursor-pointer hover:shadow-xl transition"
-              onClick={() => (window.location.href = "/dashboard/logs")}
+              whileHover={{ y: -5 }}
+              className="
+                group
+
+                bg-white/95
+
+                rounded-[32px]
+
+                border border-white
+
+                p-6 sm:p-7
+
+                shadow-[0_10px_40px_rgba(0,0,0,0.06)]
+
+                cursor-pointer
+
+                hover:shadow-[0_16px_50px_rgba(0,0,0,0.10)]
+
+                transition-all duration-300
+              "
+              onClick={() =>
+                (window.location.href = "/dashboard/logs")
+              }
             >
-              <p className="text-sm text-gray-500">
+
+              <p className="text-xs uppercase tracking-[0.2em] text-gray-400 mb-2">
                 Attendance Records
               </p>
-              <h3 className="text-lg font-semibold text-green-800">
-                View My Logs →
-              </h3>
+
+              <div className="flex items-center justify-between">
+
+                <h3 className="text-2xl font-black text-green-900">
+                  View My Logs
+                </h3>
+
+                <span className="text-green-700 text-2xl group-hover:translate-x-1 transition-transform">
+                  →
+                </span>
+
+              </div>
+
             </motion.div>
 
             {/* MONTHLY */}
             <motion.div
-              whileHover={{ y: -6 }}
-              className="bg-white p-6 rounded-2xl shadow-lg border cursor-pointer hover:shadow-xl transition"
+              whileHover={{ y: -5 }}
+              className="
+                group
+
+                bg-white/95
+
+                rounded-[32px]
+
+                border border-white
+
+                p-6 sm:p-7
+
+                shadow-[0_10px_40px_rgba(0,0,0,0.06)]
+
+                cursor-pointer
+
+                hover:shadow-[0_16px_50px_rgba(0,0,0,0.10)]
+
+                transition-all duration-300
+              "
               onClick={() =>
-                (window.location.href = "/dashboard/monthly")
+                (window.location.href =
+                  "/dashboard/monthly")
               }
             >
-              <p className="text-sm text-gray-500">
+
+              <p className="text-xs uppercase tracking-[0.2em] text-gray-400 mb-2">
                 Performance Overview
               </p>
-              <h3 className="text-lg font-semibold text-green-800">
-                Monthly Summary →
-              </h3>
+
+              <div className="flex items-center justify-between">
+
+                <h3 className="text-2xl font-black text-green-900">
+                  Monthly Summary
+                </h3>
+
+                <span className="text-green-700 text-2xl group-hover:translate-x-1 transition-transform">
+                  →
+                </span>
+
+              </div>
+
             </motion.div>
 
           </div>
 
         </div>
+
       </div>
     </div>
   );

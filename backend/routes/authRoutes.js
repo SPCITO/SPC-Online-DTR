@@ -4,8 +4,17 @@ const db = require("../config/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-router.post("/login", (req, res) => {
-  const { employee_id, password } = req.body;
+  router.post("/login", (req, res) => {
+    const { employee_id, password } = req.body;
+
+  router.post("/logout", (req, res) => {
+    res.clearCookie("token", {
+      httpOnly: true,
+      sameSite: "lax",
+    });
+
+    res.json({ message: "Logged out" });
+  });
 
   if (!employee_id || !password) {
     return res.status(400).json({ message: "Missing credentials" });
@@ -45,7 +54,16 @@ router.post("/login", (req, res) => {
         // ✅ Don't send password back
         const { password: _, ...safeUser } = user;
 
-        res.json({ token, user: safeUser });
+        res.cookie("token", token, {
+          httpOnly: true,
+          secure: false, // true in production HTTPS
+          sameSite: "lax",
+          maxAge: 1000 * 60 * 60 * 24, // 1 day
+        });
+
+        res.json({
+          user: safeUser,
+        });
 
       } catch (error) {
         console.error("Bcrypt error:", error);
