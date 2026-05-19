@@ -23,23 +23,19 @@ export default function LoginPage() {
       setLoading(true);
       setError("");
 
-      const data = await api.login({
-        employee_id,
-        password,
-      });
+    const data = await api.login({
+      employee_id,
+      password,
+    });
 
-      // ✅ Store lightweight user info only
-      localStorage.setItem(
-        "user",
-        JSON.stringify(data.user)
-      );
+    // fetch real user from backend
+    const me = await api.me();
 
-      // 🔥 Role-based redirect
-      if (data.user.role === "admin") {
-        router.replace("/admin");
-      } else {
-        router.replace("/dashboard");
-      }
+    if (me.role === "admin") {
+      router.replace("/admin");
+    } else {
+      router.replace("/dashboard");
+    }
 
     } catch (err: any) {
       console.error(err);

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { api } from "@/lib/api";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -14,9 +15,17 @@ export default function AdminLayout({
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem("user");
-    if (stored) setUser(JSON.parse(stored));
-  }, []);
+    const loadUser = async () => {
+      try {
+        const data = await api.me();
+        setUser(data);
+      } catch {
+        router.replace("/login");
+      }
+    };
+
+    loadUser();
+  }, [router]);
 
   const nav = [
     { name: "Dashboard", href: "/admin" },
@@ -24,10 +33,14 @@ export default function AdminLayout({
     { name: "Employees", href: "/admin/employees" },
   ];
 
-  const logout = () => {
-    localStorage.clear();
-    document.cookie = "token=; Max-Age=0";
-    router.push("/login");
+  const logout = async () => {
+    try {
+      await api.logout();
+    } catch (err) {
+      console.warn("Logout request failed");
+    }
+
+    router.replace("/login");
   };
 
   return (
