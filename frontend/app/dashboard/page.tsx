@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { logout } from "@/lib/auth";
+import { useAuth } from "@/hooks/useAuth";
 import {
   LogOut,
   Clock3,
@@ -15,42 +15,27 @@ import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 
 export default function Dashboard() {
-  const [user, setUser] = useState<any>(null);
+  const { user, loading: authLoading } = useAuth();
+
+  const router = useRouter();
+
   const [status, setStatus] = useState<"IN" | "OUT">("OUT");
   const [timeIn, setTimeIn] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState("");
   const [currentDate, setCurrentDate] = useState("");
   const [workDuration, setWorkDuration] = useState("00:00:00");
   const [loading, setLoading] = useState(false);
-  const [authLoading, setAuthLoading] = useState(true);
-  const router = useRouter();
 
   //LOGOUT FUNCTION
   const logout = async () => {
     try {
       await api.logout();
     } catch (err) {
-      console.warn("Logout request failed, forcing local logout");
+      console.warn("Logout request failed");
     }
 
-    localStorage.removeItem("user");
     router.replace("/login");
   };
-
-  // LOAD USER
-  useEffect(() => {
-  const stored = localStorage.getItem("user");
-
-  if (stored) {
-    try {
-      setUser(JSON.parse(stored));
-    } catch {
-      localStorage.removeItem("user");
-    }
-  }
-
-  setAuthLoading(false);
-}, []);
 
   // REAL-TIME CLOCK
   useEffect(() => {

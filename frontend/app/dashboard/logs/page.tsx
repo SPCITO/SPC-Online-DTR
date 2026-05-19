@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { motion } from "framer-motion";
 import {
@@ -14,12 +15,21 @@ export default function UserLogsPage() {
   const [user, setUser] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   // LOAD USER
   useEffect(() => {
-    const stored = localStorage.getItem("user");
-    if (stored) setUser(JSON.parse(stored));
-  }, []);
+    const loadUser = async () => {
+      try {
+        const data = await api.me();
+        setUser(data);
+      } catch {
+        router.replace("/login");
+      }
+    };
+
+    loadUser();
+  }, [router]);
 
   // FETCH LOGS
   const fetchLogs = async () => {

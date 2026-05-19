@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { motion } from "framer-motion";
 import {
@@ -17,12 +18,21 @@ export default function MonthlyDashboard() {
   const [data, setData] = useState<any>(null);
   const [selectedDay, setSelectedDay] = useState<any>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
+  const router = useRouter();
 
   // LOAD USER
   useEffect(() => {
-    const stored = localStorage.getItem("user");
-    if (stored) setUser(JSON.parse(stored));
-  }, []);
+    const loadUser = async () => {
+      try {
+        const data = await api.me();
+        setUser(data);
+      } catch {
+        router.replace("/login");
+      }
+    };
+
+    loadUser();
+  }, [router]);
 
   // FETCH DATA
   const fetchMonthly = async () => {

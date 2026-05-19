@@ -4,20 +4,18 @@ const db = require("../config/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-  router.post("/login", (req, res) => {
-    const { employee_id, password } = req.body;
+const verifyToken = require("../middleware/authMiddleware");
 
-  router.post("/logout", (req, res) => {
-    res.clearCookie("token", {
-      httpOnly: true,
-      sameSite: "lax",
-    });
-
-    res.json({ message: "Logged out" });
-  });
+// ==========================
+// LOGIN
+// ==========================
+router.post("/login", (req, res) => {
+  const { employee_id, password } = req.body;
 
   if (!employee_id || !password) {
-    return res.status(400).json({ message: "Missing credentials" });
+    return res.status(400).json({
+      message: "Missing credentials",
+    });
   }
 
   db.query(
@@ -25,50 +23,92 @@ const jwt = require("jsonwebtoken");
     [employee_id],
     async (err, result) => {
       if (err) {
-        console.error("DB Error:", err);
-        return res.status(500).json({ message: "Server error" });
+        console.error(err);
+        return res.status(500).json({
+          message: "Server error",
+        });
       }
 
       if (result.length === 0) {
-        console.log("User not found:", employee_id);
-        return res.status(401).json({ message: "User not found" });
+        return res.status(401).json({
+          message: "User not found",
+        });
       }
 
       const user = result[0];
 
-      try {
-        const valid = await bcrypt.compare(password, user.password);
+      const valid = await bcrypt.compare(
+        password,
+        user.password
+      );
 
-        console.log("Password match:", valid);
-
-        if (!valid) {
-          return res.status(401).json({ message: "Wrong password" });
-        }
-
-        const token = jwt.sign(
-          { id: user.id, role: user.role },
-          "secret",
-          { expiresIn: "1d" }
-        );
-
-        // ✅ Don't send password back
-        const { password: _, ...safeUser } = user;
-
-        res.cookie("token", token, {
-          httpOnly: true,
-          secure: false, // true in production HTTPS
-          sameSite: "lax",
-          maxAge: 1000 * 60 * 60 * 24, // 1 day
+      if (!valid) {
+        return res.status(401).json({
+          message: "Wrong password",
         });
-
-        res.json({
-          user: safeUser,
-        });
-
-      } catch (error) {
-        console.error("Bcrypt error:", error);
-        res.status(500).json({ message: "Auth error" });
       }
+
+      const token = jwt.sign(
+        {
+          id: user.id,
+          role: user.role,
+        },
+        "secret",
+        { expiresIn: "1d" }
+      );
+
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        maxAge: 1000 * 60 * 60 * 24,
+      });
+
+      const { password: _, ...safeUser } = user;
+
+      res.json({
+        user: safeUser,
+      });
+    }
+  );
+});
+
+// ==========================
+// LOGOUT
+// ==========================
+router.post("/logout", (req, res) => {
+  res.clearCookie("token", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: false,
+  });
+
+  res.json({
+    message: "Logged out",
+  });
+});
+
+// ==========================
+// CURRENT USER
+// ==========================
+router.get("/me", verifyToken, (req, res) => {
+  db.query(
+    "SELECT id, name, employee_id, role FROM employees WHERE id = ?",
+    [req.user.id],
+    (err, result) => {
+      if (err) {
+        return res.status(500).json({
+          message: "Server error",
+        });
+      }
+
+      if (result.length === 0) {
+        return res.status(404).json({
+          message: "User not found",
+        });
+      }
+
+      res.json(result[0]);
     }
   );
 });
