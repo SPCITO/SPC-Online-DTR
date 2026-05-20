@@ -17,6 +17,8 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
-    "mysql2": "^3.22.3"
+    "mysql2": "^3.22.3",
+    "ua-parser-js": "^2.0.9",
+    "uuid": "^14.0.0"
   }
 }
