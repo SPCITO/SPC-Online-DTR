@@ -60,6 +60,8 @@ export const api = {
       method: "POST",
     }),
 
+  me: () => request("/me"),
+    
   // ⏱️ DTR
   timeIn: (employee_id: string) =>
     request("/time/in", {

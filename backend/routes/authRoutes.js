@@ -3,72 +3,159 @@ const router = express.Router();
 const db = require("../config/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { v4: uuidv4 } = require("uuid");
+const logSecurityEvent = require("../utils/securityLogger");
+const verifyToken = require("../middleware/authMiddleware");
 
-  router.post("/login", (req, res) => {
-    const { employee_id, password } = req.body;
+// ==========================
+// LOGIN
+// ==========================
+router.post("/login", (req, res) => {
+  const { username, password } = req.body;
 
-  router.post("/logout", (req, res) => {
-    res.clearCookie("token", {
-      httpOnly: true,
-      sameSite: "lax",
+  if (!username || !password) {
+    return res.status(400).json({
+      message: "Missing credentials",
     });
-
-    res.json({ message: "Logged out" });
-  });
-
-  if (!employee_id || !password) {
-    return res.status(400).json({ message: "Missing credentials" });
   }
 
   db.query(
-    "SELECT * FROM employees WHERE employee_id = ?",
-    [employee_id],
+    `
+    SELECT 
+      e.*,
+      d.fullname,
+      d.empid,
+      d.FK_dept
+    FROM employees e
+    LEFT JOIN dtr_user d
+      ON e.dtr_user_id = d.PK_user
+    WHERE e.username = ?
+    `,
+    [username],
     async (err, result) => {
       if (err) {
-        console.error("DB Error:", err);
-        return res.status(500).json({ message: "Server error" });
+        console.error(err);
+
+        return res.status(500).json({
+          message: "Server error",
+        });
       }
 
       if (result.length === 0) {
-        console.log("User not found:", employee_id);
-        return res.status(401).json({ message: "User not found" });
+        return res.status(401).json({
+          message: "User not found",
+        });
       }
 
       const user = result[0];
 
-      try {
-        const valid = await bcrypt.compare(password, user.password);
+      const valid = await bcrypt.compare(
+        password,
+        user.password
+      );
 
-        console.log("Password match:", valid);
-
-        if (!valid) {
-          return res.status(401).json({ message: "Wrong password" });
-        }
-
-        const token = jwt.sign(
-          { id: user.id, role: user.role },
-          "secret",
-          { expiresIn: "1d" }
-        );
-
-        // ✅ Don't send password back
-        const { password: _, ...safeUser } = user;
-
-        res.cookie("token", token, {
-          httpOnly: true,
-          secure: false, // true in production HTTPS
-          sameSite: "lax",
-          maxAge: 1000 * 60 * 60 * 24, // 1 day
+      if (!valid) {
+        return res.status(401).json({
+          message: "Wrong password",
         });
-
-        res.json({
-          user: safeUser,
-        });
-
-      } catch (error) {
-        console.error("Bcrypt error:", error);
-        res.status(500).json({ message: "Auth error" });
       }
+
+      const session_id = uuidv4();
+
+      db.query(
+        "UPDATE employees SET active_session = ? WHERE id = ?",
+        [session_id, user.id]
+      );
+
+      const token = jwt.sign(
+        {
+          id: user.id,
+          role: user.role,
+          session_id,
+        },
+        "secret",
+        { expiresIn: "1d" }
+      );
+
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        maxAge: 1000 * 60 * 60 * 24,
+      });
+
+      logSecurityEvent({
+        employee_id: user.empid,
+        action_type: "LOGIN",
+        ip_address: req.ip,
+        user_agent: req.headers["user-agent"],
+        session_id,
+      });
+
+      res.json({
+        user: {
+          id: user.id,
+          username: user.username,
+          employee_id: user.empid,
+          name: user.fullname,
+          role: user.role,
+          department_id: user.FK_dept,
+        },
+      });
+    }
+  );
+});
+
+// ==========================
+// LOGOUT
+// ==========================
+router.post("/logout", (req, res) => {
+  res.clearCookie("token", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: false,
+  });
+
+  res.json({
+    message: "Logged out",
+  });
+});
+
+// ==========================
+// CURRENT USER
+// ==========================
+router.get("/me", verifyToken, (req, res) => {
+  db.query(
+    `
+    SELECT
+      e.id,
+      e.username,
+      e.role,
+      d.empid AS employee_id,
+      d.fullname AS name,
+      d.FK_dept AS department_id
+    FROM employees e
+    LEFT JOIN dtr_user d
+      ON e.dtr_user_id = d.PK_user
+    WHERE e.id = ?
+    `,
+    [req.user.id],
+    (err, result) => {
+      if (err) {
+        console.error(err);
+
+        return res.status(500).json({
+          message: "Server error",
+        });
+      }
+
+      if (result.length === 0) {
+        return res.status(404).json({
+          message: "User not found",
+        });
+      }
+
+      res.json(result[0]);
     }
   );
 });
