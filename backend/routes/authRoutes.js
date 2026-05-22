@@ -3,27 +3,39 @@ const router = express.Router();
 const db = require("../config/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-
+const { v4: uuidv4 } = require("uuid");
+const logSecurityEvent = require("../utils/securityLogger");
 const verifyToken = require("../middleware/authMiddleware");
 
 // ==========================
 // LOGIN
 // ==========================
 router.post("/login", (req, res) => {
-  const { employee_id, password } = req.body;
+  const { username, password } = req.body;
 
-  if (!employee_id || !password) {
+  if (!username || !password) {
     return res.status(400).json({
       message: "Missing credentials",
     });
   }
 
   db.query(
-    "SELECT * FROM employees WHERE employee_id = ?",
-    [employee_id],
+    `
+    SELECT 
+      e.*,
+      d.fullname,
+      d.empid,
+      d.FK_dept
+    FROM employees e
+    LEFT JOIN dtr_user d
+      ON e.dtr_user_id = d.PK_user
+    WHERE e.username = ?
+    `,
+    [username],
     async (err, result) => {
       if (err) {
         console.error(err);
+
         return res.status(500).json({
           message: "Server error",
         });
@@ -48,10 +60,18 @@ router.post("/login", (req, res) => {
         });
       }
 
+      const session_id = uuidv4();
+
+      db.query(
+        "UPDATE employees SET active_session = ? WHERE id = ?",
+        [session_id, user.id]
+      );
+
       const token = jwt.sign(
         {
           id: user.id,
           role: user.role,
+          session_id,
         },
         "secret",
         { expiresIn: "1d" }
@@ -64,10 +84,23 @@ router.post("/login", (req, res) => {
         maxAge: 1000 * 60 * 60 * 24,
       });
 
-      const { password: _, ...safeUser } = user;
+      logSecurityEvent({
+        employee_id: user.empid,
+        action_type: "LOGIN",
+        ip_address: req.ip,
+        user_agent: req.headers["user-agent"],
+        session_id,
+      });
 
       res.json({
-        user: safeUser,
+        user: {
+          id: user.id,
+          username: user.username,
+          employee_id: user.empid,
+          name: user.fullname,
+          role: user.role,
+          department_id: user.FK_dept,
+        },
       });
     }
   );
@@ -93,10 +126,24 @@ router.post("/logout", (req, res) => {
 // ==========================
 router.get("/me", verifyToken, (req, res) => {
   db.query(
-    "SELECT id, name, employee_id, role FROM employees WHERE id = ?",
+    `
+    SELECT
+      e.id,
+      e.username,
+      e.role,
+      d.empid AS employee_id,
+      d.fullname AS name,
+      d.FK_dept AS department_id
+    FROM employees e
+    LEFT JOIN dtr_user d
+      ON e.dtr_user_id = d.PK_user
+    WHERE e.id = ?
+    `,
     [req.user.id],
     (err, result) => {
       if (err) {
+        console.error(err);
+
         return res.status(500).json({
           message: "Server error",
         });
