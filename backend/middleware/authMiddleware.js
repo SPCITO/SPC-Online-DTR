@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const db = require("../config/db");
 
 const verifyToken = (req, res, next) => {
   const token = req.cookies.token;
@@ -12,9 +13,30 @@ const verifyToken = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, "secret");
 
-    req.user = decoded;
+    db.query(
+      "SELECT active_session FROM employees WHERE id = ?",
+      [decoded.id],
+      (err, result) => {
+        if (err || result.length === 0) {
+          return res.status(401).json({
+            message: "Unauthorized",
+          });
+        }
 
-    next();
+        const activeSession = result[0].active_session;
+
+
+        if (activeSession !== decoded.session_id) {
+          return res.status(401).json({
+            message: "Session expired",
+          });
+        }
+
+        req.user = decoded;
+
+        next();
+      }
+    );
   } catch (err) {
     return res.status(401).json({
       message: "Invalid token",

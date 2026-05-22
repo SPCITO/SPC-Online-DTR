@@ -8,13 +8,13 @@ import { LockKeyhole, User, ArrowLeft } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [employee_id, setId] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const handleLogin = async () => {
-    if (!employee_id || !password) {
+    if (!username || !password) {
       setError("Please fill in all fields");
       return;
     }
@@ -23,19 +23,19 @@ export default function LoginPage() {
       setLoading(true);
       setError("");
 
-    const data = await api.login({
-      employee_id,
-      password,
-    });
+      await api.login({
+        username,
+        password,
+      });
 
-    // fetch real user from backend
-    const me = await api.me();
+      // fetch authenticated user
+      const me = await api.me();
 
-    if (me.role === "admin") {
-      router.replace("/admin");
-    } else {
-      router.replace("/dashboard");
-    }
+      if (me.role === "admin") {
+        router.replace("/admin");
+      } else {
+        router.replace("/dashboard");
+      }
 
     } catch (err: any) {
       console.error(err);
@@ -180,7 +180,7 @@ export default function LoginPage() {
           <div>
 
             <label className="text-sm font-semibold text-slate-700 mb-2 block">
-              Employee ID
+              Username
             </label>
 
             <div
@@ -209,9 +209,9 @@ export default function LoginPage() {
 
               <input
                 type="text"
-                placeholder="Enter employee ID"
-                value={employee_id}
-                onChange={(e) => setId(e.target.value)}
+                placeholder="Enter Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 className="
                   w-full
 
