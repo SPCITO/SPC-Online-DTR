@@ -109,6 +109,15 @@ export const api = {
       method: "DELETE",
     }),
 
+  //CHANGE PASSWORD
+  changePassword: (data: {
+    newPassword: string;
+  }) =>
+    request("/change-password", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
   // ⏰ SERVER TIME
   getTime: () => request("/time"),
 };

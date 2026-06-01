@@ -26,6 +26,16 @@ export default function Dashboard() {
   const [workDuration, setWorkDuration] = useState("00:00:00");
   const [loading, setLoading] = useState(false);
 
+
+  //FIRST-LOGIN PASSWORD RESET CHECK 
+  useEffect(() => {
+    if (!authLoading && user) {
+      if (user.password_reset_required) {
+        router.replace("/change-password");
+      }
+    }
+  }, [user, authLoading, router]);
+
   //LOGOUT FUNCTION
   const logout = async () => {
     try {
@@ -125,19 +135,52 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [timeIn]);
 
+  
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/login");
+    }
+  }, [user, authLoading, router]);
+
   // ACTIONS
   const handleTimeIn = async () => {
-    setLoading(true);
-    await api.timeIn(user.employee_id);
-    await checkStatus();
-    setLoading(false);
+    if (!user) return;
+
+    try {
+      setLoading(true);
+
+      await api.timeIn(user.employee_id);
+
+      toast.success("Time In successful");
+
+      await checkStatus();
+    } catch (err: any) {
+      toast.error(
+        err?.message || "Time In failed"
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleTimeOut = async () => {
-    setLoading(true);
-    await api.timeOut(user.employee_id);
-    await checkStatus();
-    setLoading(false);
+    if (!user) return;
+
+    try {
+      setLoading(true);
+
+      await api.timeOut(user.employee_id);
+
+      toast.success("Time Out successful");
+
+      await checkStatus();
+    } catch (err: any) {
+      toast.error(
+        err?.message || "Time Out failed"
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (authLoading) {
@@ -220,6 +263,27 @@ export default function Dashboard() {
                 </p>
 
               </div>
+
+              {/* ADMIN ACCESS */}
+              {user.role === "admin" && (
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => router.push("/admin")}
+                  className="
+                    px-5 py-3
+                    rounded-2xl
+                    bg-emerald-500/20
+                    border border-emerald-400/30
+                    text-emerald-300
+                    font-semibold
+                    hover:bg-emerald-500/30
+                    transition
+                  "
+                >
+                  Open Admin Panel
+                </motion.button>
+              )}
 
               {/* LOGOUT */}
               <motion.button
