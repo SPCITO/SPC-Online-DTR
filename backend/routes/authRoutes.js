@@ -107,8 +107,12 @@ router.post("/login", (req, res) => {
 
         user: {
           id: user.id,
+          employee_db_id: user.id,
+
           username: user.username,
+
           employee_id: user.empid,
+
           name: user.fullname,
           role: user.role,
           department_id: user.FK_dept,
@@ -140,7 +144,7 @@ router.get("/me", verifyToken, (req, res) => {
   db.query(
     `
     SELECT
-      e.id,
+      e.id AS employee_db_id,
       e.username,
       e.role,
       d.empid AS employee_id,
@@ -153,18 +157,10 @@ router.get("/me", verifyToken, (req, res) => {
     `,
     [req.user.id],
     (err, result) => {
-      if (err) {
-        console.error(err);
+      if (err) return res.status(500).json({ message: "Server error" });
 
-        return res.status(500).json({
-          message: "Server error",
-        });
-      }
-
-      if (result.length === 0) {
-        return res.status(404).json({
-          message: "User not found",
-        });
+      if (!result.length) {
+        return res.status(404).json({ message: "User not found" });
       }
 
       res.json(result[0]);

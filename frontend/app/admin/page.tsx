@@ -604,7 +604,7 @@ export default function AdminDashboard() {
                             font-bold
                           "
                         >
-                          {log.employee_id}
+                          {log.id}
                         </div>
 
                       </td>

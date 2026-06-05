@@ -31,6 +31,7 @@ export default function AdminLayout({
     { name: "Dashboard", href: "/admin" },
     { name: "Logs", href: "/admin/logs" },
     { name: "Employees", href: "/admin/employees" },
+    { name: "Departments", href: "/admin/departments" },
   ];
 
   const logout = async () => {

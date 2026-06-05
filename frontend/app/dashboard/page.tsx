@@ -86,7 +86,7 @@ export default function Dashboard() {
     if (!user || authLoading) return;
 
     try {
-      const res = await api.getStatus(user.employee_id);
+      const res = await api.getStatus(user.employee_db_id);
       setStatus(res.status);
       setTimeIn(res.time_in);
     } catch (err) {
@@ -149,15 +149,15 @@ export default function Dashboard() {
     try {
       setLoading(true);
 
-      await api.timeIn(user.employee_id);
+      console.log("USER OBJECT:", user);
+
+      await api.timeIn(user.employee_db_id);
 
       toast.success("Time In successful");
 
       await checkStatus();
     } catch (err: any) {
-      toast.error(
-        err?.message || "Time In failed"
-      );
+      toast.error(err?.message || "Time In failed");
     } finally {
       setLoading(false);
     }
@@ -169,15 +169,13 @@ export default function Dashboard() {
     try {
       setLoading(true);
 
-      await api.timeOut(user.employee_id);
+      await api.timeOut(user.employee_db_id);
 
       toast.success("Time Out successful");
 
       await checkStatus();
     } catch (err: any) {
-      toast.error(
-        err?.message || "Time Out failed"
-      );
+      toast.error(err?.message || "Time Out failed");
     } finally {
       setLoading(false);
     }
@@ -259,7 +257,7 @@ export default function Dashboard() {
                 </h1>
 
                 <p className="text-gray-500 mt-2 text-sm font-medium">
-                  Employee ID: {user.employee_id}
+                  Employee ID: {user.id}
                 </p>
 
               </div>

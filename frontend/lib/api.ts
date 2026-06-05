@@ -63,37 +63,37 @@ export const api = {
   me: () => request("/me"),
     
   // ⏱️ DTR
-  timeIn: (employee_id: string) =>
-    request("/time/in", {
+  timeIn: async (employee_db_id: number) =>
+    request("/dtr/time-in", {
       method: "POST",
-      body: JSON.stringify({ employee_id }),
+      body: JSON.stringify({ employee_db_id }),
     }),
 
-  timeOut: (employee_id: string) =>
-    request("/time/out", {
+  timeOut: async (employee_db_id: number) =>
+    request("/dtr/time-out", {
       method: "POST",
-      body: JSON.stringify({ employee_id }),
+      body: JSON.stringify({ employee_db_id }),
     }),
 
   // ⏱ STATUS
-  getStatus: (employee_id: string) =>
-    request(`/time/status/${employee_id}`),
+  getStatus: (employee_db_id: number) =>
+    request(`/time/status/${employee_db_id}`),
 
   // 📊 ALL LOGS
   getLogs: (page = 1) =>
     request(`/logs?page=${page}&limit=10`),
 
   // 👤 USER LOGS
-  getMyLogs: (employee_id: string) =>
-    request(`/logs/me/${employee_id}`),
+  getMyLogs: (employee_db_id: number) =>
+    request(`/logs/me/${employee_db_id}`),
 
   // 📅 MONTHLY LOGS
   getMonthlyLogs: (
-    employee_id: string,
+    employee_db_id: number,
     year: number,
     month: number
   ) =>
-    request(`/monthly/${employee_id}/${year}/${month}`),
+    request(`/monthly/${employee_db_id}/${year}/${month}`),
 
   // 👤 EMPLOYEES
   getEmployees: () => request("/employees"),
@@ -109,6 +109,16 @@ export const api = {
       method: "DELETE",
     }),
 
+  // DEPARTMENTS
+  getDepartments: () =>
+    request("/departments"),
+
+  getDepartmentLogsByDepartment: (deptId: number) =>
+   request(`/departments/${deptId}/logs`),
+
+  getDepartmentSummary: () =>
+    request("/departments/summary"),
+
   //CHANGE PASSWORD
   changePassword: (data: {
     newPassword: string;
@@ -120,4 +130,5 @@ export const api = {
 
   // ⏰ SERVER TIME
   getTime: () => request("/time"),
+
 };

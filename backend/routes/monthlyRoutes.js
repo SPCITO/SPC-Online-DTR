@@ -3,8 +3,8 @@ const router = express.Router();
 const db = require("../config/db");
 
 // GET MONTHLY LOGS (FIXED VERSION)
-router.get("/:employee_id/:year/:month", (req, res) => {
-  const { employee_id, year, month } = req.params;
+router.get("/:employee_db_id/:year/:month", (req, res) => {
+  const { employee_db_id, year, month } = req.params;
 
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0, 23, 59, 59);
@@ -12,11 +12,11 @@ router.get("/:employee_id/:year/:month", (req, res) => {
   db.query(
     `
     SELECT * FROM attendance_logs
-    WHERE employee_id = ?
+    WHERE employee_db_id = ?
     AND time_in BETWEEN ? AND ?
     ORDER BY time_in ASC
     `,
-    [employee_id, startDate, endDate],
+    [employee_db_id, startDate, endDate],
     (err, results) => {
       if (err) return res.status(500).json(err);
 
