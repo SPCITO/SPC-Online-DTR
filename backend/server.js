@@ -40,6 +40,10 @@ app.use(
 
 app.use("/api/monthly", verifyToken, require("./routes/monthlyRoutes"));
 
+// DEPARTMENT ROUTES (PROTECTED)
+const departmentRoutes = require("./routes/departmentRoutes");
+app.use("/api/departments", departmentRoutes);
+
 // TEST
 app.get("/", (req, res) => {
   res.send("API running");

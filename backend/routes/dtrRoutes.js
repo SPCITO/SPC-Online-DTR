@@ -8,17 +8,23 @@ const logSecurityEvent = require("../utils/securityLogger");
 // TIME IN
 // ==========================
 router.post("/time-in", (req, res) => {
-  const { employee_id } = req.body;
+  const { employee_db_id } = req.body;
 
   const now = new Date();
+
+  if (!employee_db_id) {
+    return res.status(400).json({
+      message: "Employee DB ID is required",
+    });
+  }
 
   db.query(
     `
     INSERT INTO attendance_logs
-    (employee_id, time_in)
+    (employee_db_id, time_in)
     VALUES (?, ?)
     `,
-    [employee_id, now],
+    [employee_db_id, now],
     (err) => {
       if (err) {
         console.error(err);
@@ -28,9 +34,8 @@ router.post("/time-in", (req, res) => {
         });
       }
 
-      // 🔐 SECURITY LOG
       logSecurityEvent({
-        employee_id,
+        employee_id: employee_db_id,
         action_type: "TIME_IN",
         ip_address: req.ip,
         user_agent: req.headers["user-agent"],
@@ -49,18 +54,25 @@ router.post("/time-in", (req, res) => {
 // TIME OUT
 // ==========================
 router.post("/time-out", (req, res) => {
-  const { employee_id } = req.body;
+  const { employee_db_id } = req.body;
 
   const now = new Date();
+
+  if (!employee_db_id) {
+    return res.status(400).json({
+      message: "Employee DB ID is required",
+    });
+  }
 
   db.query(
     `
     UPDATE attendance_logs
     SET time_out = ?
-    WHERE employee_id = ?
+    WHERE employee_db_id = ?
     AND DATE(time_in) = CURDATE()
+    AND time_out IS NULL
     `,
-    [now, employee_id],
+    [now, employee_db_id],
     (err) => {
       if (err) {
         console.error(err);
@@ -70,9 +82,8 @@ router.post("/time-out", (req, res) => {
         });
       }
 
-      // 🔐 SECURITY LOG
       logSecurityEvent({
-        employee_id,
+        employee_id: employee_db_id,
         action_type: "TIME_OUT",
         ip_address: req.ip,
         user_agent: req.headers["user-agent"],

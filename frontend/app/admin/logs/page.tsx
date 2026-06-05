@@ -37,8 +37,7 @@ export default function LogsPage() {
   }, []);
 
   const filteredLogs = logs.filter((log) =>
-    log.employee_id
-      ?.toString()
+    log.name
       .toLowerCase()
       .includes(search.toLowerCase())
   );
@@ -371,7 +370,7 @@ export default function LogsPage() {
 
                         <td className="px-6 py-5">
                           <div className="font-bold text-gray-900">
-                            {log.employee_id}
+                            {log.name}
                           </div>
                         </td>
 

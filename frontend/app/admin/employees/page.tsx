@@ -16,7 +16,7 @@ import {
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<any[]>([]);
   const [name, setName] = useState("");
-  const [employee_id, setId] = useState("");
+  const [empid, setEmpid] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [csvLoading, setCsvLoading] = useState(false);
@@ -42,7 +42,7 @@ export default function EmployeesPage() {
   // ADD SINGLE EMPLOYEE
   // -------------------------
   const addEmployee = async () => {
-    if (!name || !employee_id || !password) {
+    if (!name || !empid || !password) {
       toast.error("Complete all fields");
       return;
     }
@@ -52,14 +52,14 @@ export default function EmployeesPage() {
 
       await api.addEmployee({
         name,
-        employee_id,
+        employee_id: empid,
         password,
       });
 
       toast.success("Employee added");
 
       setName("");
-      setId("");
+      setEmpid("");
       setPassword("");
 
       fetchEmployees();
@@ -396,8 +396,8 @@ export default function EmployeesPage() {
 
               <input
                 placeholder="Employee ID"
-                value={employee_id}
-                onChange={(e) => setId(e.target.value)}
+                value={empid}
+                onChange={(e) => setEmpid(e.target.value)}
                 className="
                   h-14
 
