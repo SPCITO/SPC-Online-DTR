@@ -16,11 +16,57 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+// DEPARTMENT NAME MAPPING (using centralized codes)
 const DEPARTMENT_NAMES: Record<number, string> = {
   1: "Basic Ed",
   2: "Collegiate",
   3: "Admin-Personnel",
   4: "Student Assistant",
+};
+
+// Department codes for clean filenames
+const DEPARTMENT_CODES: Record<number, string> = {
+  1: "BE",
+  2: "COL",
+  3: "ADMIN",
+  4: "SA",
+};
+
+// Sanitize filename helper
+const sanitizeFilename = (str: string) => {
+  return str
+    .replace(/[^a-zA-Z0-9]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+};
+
+// Generate standardized export filename
+const generateExportFilename = ({
+  type,
+  departmentId,
+  dateRange,
+}: {
+  type: string;
+  departmentId?: number;
+  dateRange?: string;
+}) => {
+  const parts = ["dtr-export"];
+
+  if (departmentId && DEPARTMENT_CODES[departmentId]) {
+    parts.push(DEPARTMENT_CODES[departmentId]);
+  }
+
+  if (dateRange) {
+    parts.push(dateRange);
+  }
+
+  parts.push(type);
+
+  const timestamp = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  parts.push(timestamp);
+
+  return `${parts.join("-")}.xlsx`;
 };
 
 type FilterType = "today" | "week" | "month";
@@ -165,36 +211,45 @@ export default function AdminDashboardPage() {
     );
   }, [filteredLogs]);
 
-  // EXPORT
+  // EXPORT ALL LOGS (PRODUCTION-READY)
   const exportExcel = () => {
-    const worksheet =
-      XLSX.utils.json_to_sheet(
-        filteredLogs.map((log) => ({
-          Employee: log.name,
-          Department:
-            DEPARTMENT_NAMES[
-              log.department_id
-            ],
-          TimeIn: log.time_in,
-          TimeOut: log.time_out,
-          Status: getStatus(log),
-          WorkHours: getWorkHours(log),
-        }))
-      );
+    const sortedLogs = [...filteredLogs].sort((a, b) => {
+      // First sort by department
+      if (a.department_id !== b.department_id) {
+        return Number(a.department_id) - Number(b.department_id);
+      }
+      // Then by time_in
+      return new Date(b.time_in).getTime() - new Date(a.time_in).getTime();
+    });
 
-    const workbook =
-      XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(
+      sortedLogs.map((log) => ({
+        Department_ID: log.department_id,
+        Department: DEPARTMENT_NAMES[log.department_id] || "Unknown",
+        Employee_ID: log.employee_db_id,
+        Employee: log.name || "Unknown",
+        Role: log.role || "N/A",
+        TimeIn: log.time_in ? new Date(log.time_in).toISOString() : "",
+        TimeOut: log.time_out ? new Date(log.time_out).toISOString() : "",
+        Status: getStatus(log),
+        WorkHours: getWorkHours(log),
+      }))
+    );
+
+    const workbook = XLSX.utils.book_new();
 
     XLSX.utils.book_append_sheet(
       workbook,
       worksheet,
-      "Department Logs"
+      "All Departments"
     );
 
-    XLSX.writeFile(
-      workbook,
-      "department-logs.xlsx"
-    );
+    const filename = generateExportFilename({
+      type: "all-departments",
+      dateRange: filter,
+    });
+
+    XLSX.writeFile(workbook, filename);
   };
 
   if (loading) {
@@ -375,39 +430,50 @@ export default function AdminDashboardPage() {
                 onClick={(e) => {
                   e.stopPropagation();
 
-                  const deptLogs =
-                    filteredLogs.filter(
-                      (log) =>
-                        Number(
-                          log.department_id
-                        ) === Number(dept.id)
-                    );
+                  // Get logs for this department only
+                  const deptLogs = filteredLogs.filter(
+                    (log) =>
+                      Number(log.department_id) === Number(dept.id)
+                  );
 
-                  const worksheet =
-                    XLSX.utils.json_to_sheet(
-                      deptLogs.map((log) => ({
-                        Employee: log.name,
-                        TimeIn: log.time_in,
-                        TimeOut: log.time_out,
-                        Status: getStatus(log),
-                        WorkHours:
-                          getWorkHours(log),
-                      }))
-                    );
+                  // Sort by time_in descending within the department
+                  const sortedDeptLogs = [...deptLogs].sort((a, b) => {
+                    return new Date(b.time_in).getTime() - new Date(a.time_in).getTime();
+                  });
 
-                  const workbook =
-                    XLSX.utils.book_new();
+                  const worksheet = XLSX.utils.json_to_sheet(
+                    sortedDeptLogs.map((log) => ({
+                      Department_ID: log.department_id,
+                      Department: DEPARTMENT_NAMES[log.department_id],
+                      Employee_ID: log.employee_db_id,
+                      Employee: log.name || "Unknown",
+                      Role: log.role || "N/A",
+                      TimeIn: log.time_in ? new Date(log.time_in).toISOString() : "",
+                      TimeOut: log.time_out ? new Date(log.time_out).toISOString() : "",
+                      Status: getStatus(log),
+                      WorkHours: getWorkHours(log),
+                    }))
+                  );
+
+                  const workbook = XLSX.utils.book_new();
+
+                  // Use sanitized department name for sheet name
+                  const sheetName = dept.name.substring(0, 31); // Excel sheet name limit
 
                   XLSX.utils.book_append_sheet(
                     workbook,
                     worksheet,
-                    dept.name
+                    sheetName
                   );
 
-                  XLSX.writeFile(
-                    workbook,
-                    `${dept.name}.xlsx`
-                  );
+                  // Generate clean standardized filename
+                  const filename = generateExportFilename({
+                    type: "department",
+                    departmentId: Number(dept.id),
+                    dateRange: filter,
+                  });
+
+                  XLSX.writeFile(workbook, filename);
                 }}
                 className="
                   mt-6

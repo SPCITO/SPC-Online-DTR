@@ -119,6 +119,14 @@ export const api = {
   getDepartmentSummary: () =>
     request("/departments/summary"),
 
+  // EXPORT
+  exportDepartmentLogs: (deptId?: number, dateRange?: string) => {
+    const params = new URLSearchParams();
+    if (deptId) params.append("deptId", deptId.toString());
+    if (dateRange) params.append("dateRange", dateRange);
+    return request(`/departments/export${params.toString() ? `?${params.toString()}` : ""}`);
+  },
+
   //CHANGE PASSWORD
   changePassword: (data: {
     newPassword: string;
