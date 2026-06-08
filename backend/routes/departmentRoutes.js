@@ -3,43 +3,20 @@ const router = express.Router();
 
 const db = require("../config/db");
 const verifyToken = require("../middleware/authMiddleware");
+const { getAllDepartments } = require("../utils/deptMapping");
 
 // =====================================
 // GET ALL DEPARTMENTS
 // =====================================
 router.get("/", verifyToken, (req, res) => {
-  db.query(
-    `
-    SELECT 
-      dept.department_id,
-      dept.department_name,
-      COUNT(d.PK_user) AS total_employees
-    FROM (
-      SELECT 1 AS department_id, 'Basic Ed' AS department_name
-      UNION ALL
-      SELECT 2, 'Collegiate'
-      UNION ALL
-      SELECT 3, 'Administrative/Personnel'
-      UNION ALL
-      SELECT 4, 'Student Assistant'
-    ) dept
+  const departments = getAllDepartments().map((dept) => ({
+    department_id: dept.id,
+    department_name: dept.name,
+    display_name: dept.displayName,
+    code: dept.code,
+  }));
 
-    LEFT JOIN dtr_user d 
-      ON d.groupno = dept.department_id
-
-    GROUP BY dept.department_id, dept.department_name
-
-    ORDER BY dept.department_id
-    `,
-    (err, results) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ message: "Failed to fetch departments" });
-      }
-
-      res.json(results);
-    }
-  );
+  res.json(departments);
 });
 
 // =====================================
@@ -87,7 +64,7 @@ router.get("/:deptId/logs", (req, res) => {
 // =====================================
 // GET DEPARTMENT SUMMARY
 // =====================================
-router.get("/departments/summary", (req, res) => {
+router.get("/summary", (req, res) => {
   db.query(`
     SELECT 
       d.FK_dept AS department_id,
@@ -126,6 +103,99 @@ router.get("/departments/summary", (req, res) => {
 
     res.json(result);
   });
+});
+
+// =====================================
+// EXPORT DEPARTMENT LOGS (PRODUCTION-READY)
+// =====================================
+router.get("/export", verifyToken, (req, res) => {
+  const { deptId, dateRange } = req.query;
+  
+  const { getDepartmentCode, generateExportFilename } = require("../utils/deptMapping");
+  
+  let dateCondition = "";
+  const dateParams = [];
+  const now = new Date();
+  
+  // Build date filter based on dateRange parameter
+  if (dateRange === "today") {
+    dateCondition = "AND DATE(l.time_in) = ?";
+    dateParams.push(now.toISOString().split("T")[0]);
+  } else if (dateRange === "week") {
+    dateCondition = "AND l.time_in >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
+  } else if (dateRange === "month") {
+    dateCondition = "AND MONTH(l.time_in) = ? AND YEAR(l.time_in) = ?";
+    dateParams.push(now.getMonth() + 1, now.getFullYear());
+  }
+  
+  // Build department filter
+  let deptCondition = "";
+  if (deptId) {
+    deptCondition = "AND d.groupno = ?";
+    dateParams.push(deptId);
+  }
+  
+  db.query(
+    `
+    SELECT 
+      l.id,
+      l.time_in,
+      l.time_out,
+      
+      e.employee_id,
+      e.name AS employee_name,
+      e.role,
+      
+      d.fullname AS user_fullname,
+      d.groupno AS department_id
+      
+    FROM attendance_logs l
+    
+    LEFT JOIN employees e
+      ON l.employee_db_id = e.id
+      
+    LEFT JOIN dtr_user d
+      ON e.dtr_user_id = d.PK_user
+      
+    WHERE 1=1
+      ${deptCondition}
+      ${dateCondition}
+      
+    ORDER BY d.groupno ASC, l.time_in DESC
+    `,
+    dateParams,
+    (err, result) => {
+      if (err) {
+        console.error("Export error:", err);
+        return res.status(500).json({ message: "Failed to export logs" });
+      }
+      
+      // Format data for clean export
+      const formattedData = result.map((row) => ({
+        Department_ID: row.department_id,
+        Department_Name: getDepartmentCode(row.department_id) || `Dept-${row.department_id}`,
+        Employee_ID: row.employee_id || row.employee_db_id,
+        Employee_Name: row.employee_name || row.user_fullname || "Unknown",
+        Role: row.role || "N/A",
+        Time_In: row.time_in ? new Date(row.time_in).toISOString() : "",
+        Time_Out: row.time_out ? new Date(row.time_out).toISOString() : "",
+        Status: !row.time_out ? "ACTIVE" : "COMPLETED",
+      }));
+      
+      res.json({
+        success: true,
+        filename: generateExportFilename({
+          type: "department-logs",
+          departmentId: deptId ? parseInt(deptId.toString()) : undefined,
+          dateRange: dateRange || "all",
+          extension: "xlsx",
+        }),
+        data: formattedData,
+        count: formattedData.length,
+        exportedAt: new Date().toISOString(),
+      });
+    }
+  );
 });
 
 module.exports = router;
