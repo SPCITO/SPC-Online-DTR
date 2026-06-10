@@ -36,7 +36,7 @@ export default function UserLogsPage() {
     if (!user) return;
 
     try {
-      const data = await api.getMyLogs(user.employee_id);
+      const data = await api.getMyLogs(user.employee_db_id);
       setLogs(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Logs fetch error:", err);
@@ -103,7 +103,7 @@ export default function UserLogsPage() {
                 </h1>
 
                 <p className="text-slate-500 mt-3 text-sm sm:text-base">
-                  {user.name} • {user.employee_id}
+                  {user.name} • {user.employee_db_id}
                 </p>
 
               </div>

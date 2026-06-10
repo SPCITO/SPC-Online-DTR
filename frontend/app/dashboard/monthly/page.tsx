@@ -39,7 +39,7 @@ export default function MonthlyDashboard() {
     if (!user) return;
 
     const res = await api.getMonthlyLogs(
-      user.employee_id,
+      user.employee_db_id,
       currentDate.getFullYear(),
       currentDate.getMonth() + 1
     );
