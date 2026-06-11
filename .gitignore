@@ -5,53 +5,61 @@ node_modules/
 # Build outputs
 dist/
 build/
-.next/
-out/
-
-# Logs
-*.log
-
-# Environment variables
-.env
-.env.local
-.env.*
-
-# Editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
+target/
 
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
+*.py.class
+*.so
+*.egg-info/
+.eggs/
+
+# Virtual environments
 venv/
 .venv/
 env/
-ENV/
+.env/
 
-# Coverage reports
+# Logs
+*.log
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Coverage
 coverage/
 htmlcov/
 .coverage
 
-# MyPy cache
-.mypy_cache/
-.dmypy.json
-dmypy.json
+# Environment variables
+.env
+.env.local
+*.env.*
 
-# Pytest cache
+# MyPy
+.mypy_cache/
+
+# PyTest
 .pytest_cache/
 
-# OS generated files
-.DS_Store
-Thumbs.db
+# Gradle
+.gradle/
 
-# Compression files
+# Temporary files
+*.tmp
+*.temp
+
+# Compressed files
 *.zip
 *.gz
 *.tar

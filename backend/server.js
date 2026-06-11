@@ -1,13 +1,17 @@
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
+require("dotenv").config();
 
 const app = express();
+
+// Get CORS origin from environment variable or default to localhost for development
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000";
 
 // middleware
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: CORS_ORIGIN,
     credentials: true,
   })
 );

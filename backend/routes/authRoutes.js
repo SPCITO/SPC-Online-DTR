@@ -7,6 +7,8 @@ const { v4: uuidv4 } = require("uuid");
 const logSecurityEvent = require("../utils/securityLogger");
 const verifyToken = require("../middleware/authMiddleware");
 
+const JWT_SECRET = process.env.JWT_SECRET || "secret";
+
 // ==========================
 // LOGIN
 // ==========================
@@ -80,13 +82,13 @@ router.post("/login", (req, res) => {
           role: user.role,
           session_id,
         },
-        "secret",
+        JWT_SECRET,
         { expiresIn: "1d" }
       );
 
       res.cookie("token", token, {
         httpOnly: true,
-        secure: false,
+        secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         maxAge: 1000 * 60 * 60 * 24,
       });
@@ -129,7 +131,7 @@ router.post("/logout", (req, res) => {
   res.clearCookie("token", {
     httpOnly: true,
     sameSite: "lax",
-    secure: false,
+    secure: process.env.NODE_ENV === "production",
   });
 
   res.json({
@@ -212,7 +214,7 @@ router.post(
           res.clearCookie("token", {
             httpOnly: true,
             sameSite: "lax",
-            secure: false,
+            secure: process.env.NODE_ENV === "production",
           });
 
           return res.json({

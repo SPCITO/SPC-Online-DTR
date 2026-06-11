@@ -1,6 +1,8 @@
 const jwt = require("jsonwebtoken");
 const db = require("../config/db");
 
+const JWT_SECRET = process.env.JWT_SECRET || "secret";
+
 const verifyToken = (req, res, next) => {
   const token = req.cookies.token;
 
@@ -11,7 +13,7 @@ const verifyToken = (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, "secret");
+    const decoded = jwt.verify(token, JWT_SECRET);
 
     db.query(
       "SELECT active_session FROM employees WHERE id = ?",
