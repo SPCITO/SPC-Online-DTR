@@ -24,56 +24,122 @@ router.get("/", verifyToken, (req, res) => {
 // =====================================
 // GET EMPLOYEES BY DEPARTMENT
 // =====================================
-router.get("/:deptId/logs", (req, res) => {
+router.get("/:deptId/logs", async (req, res) => {
   const { deptId } = req.params;
+  
+  try {
+    const { data, error } = await db.supabase
+      .from('attendance_logs')
+      .select(`
+        id,
+        time_in,
+        time_out,
+        employees (
+          name,
+          role,
+          dtr_user (
+            groupno
+          )
+        )
+      `)
+      .eq('employees.dtr_user->>groupno', deptId)
+      .order('time_in', { ascending: false });
 
-  db.query(
-    `
-    SELECT 
-      l.id,
-      l.time_in,
-      l.time_out,
-      e.name,
-      e.role,
-      d.groupno AS department_id
-    FROM attendance_logs l
-    LEFT JOIN employees e ON l.employee_db_id = e.id
-    LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
-    WHERE d.groupno = ?
-    ORDER BY l.time_in DESC
-    `,
-    [deptId],
-    (err, result) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ message: "Failed to fetch department logs" });
-      }
-      res.json(result);
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ message: "Failed to fetch department logs" });
     }
-  );
+
+    // Transform data
+    const transformed = (data || []).map(log => ({
+      id: log.id,
+      time_in: log.time_in,
+      time_out: log.time_out,
+      name: log.employees?.name,
+      role: log.employees?.role,
+      department_id: log.employees?.dtr_user?.groupno
+    }));
+
+    res.json(transformed);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Failed to fetch department logs" });
+  }
 });
 
 // =====================================
 // GET DEPARTMENT SUMMARY
 // =====================================
-router.get("/summary", (req, res) => {
-  db.query(`
-    SELECT 
-      d.FK_dept AS department_id,
-      COUNT(DISTINCT e.id) AS total_employees,
-      SUM(CASE WHEN l.time_out IS NULL THEN 1 ELSE 0 END) AS active_count,
-      SUM(CASE WHEN TIME(l.time_in) > '08:30:00' THEN 1 ELSE 0 END) AS late_count
-    FROM employees e
-    LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
-    LEFT JOIN attendance_logs l ON e.id = l.employee_db_id AND DATE(l.time_in) = CURDATE()
-    GROUP BY d.FK_dept
-  `, (err, result) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ message: "Failed to load summary" });
-    }
-    res.json(result);
-  });
+router.get("/summary", async (req, res) => {
+  try {
+    // Get current date range for today
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
+
+    // Fetch all employees with their departments
+    const { data: employees } = await db.supabase
+      .from('employees')
+      .select(`
+        id,
+        dtr_user (
+          FK_dept
+        )
+      `);
+
+    // Fetch today's attendance logs
+    const { data: logs } = await db.supabase
+      .from('attendance_logs')
+      .select(`
+        employee_db_id,
+        time_in,
+        time_out
+      `)
+      .gte('time_in', startOfDay)
+      .lte('time_in', endOfDay);
+
+    // Calculate summary by department
+    const deptSummary = {};
+
+    (employees || []).forEach(emp => {
+      const deptId = emp.dtr_user?.FK_dept || 'unknown';
+      if (!deptSummary[deptId]) {
+        deptSummary[deptId] = {
+          department_id: deptId,
+          total_employees: 0,
+          active_count: 0,
+          late_count: 0
+        };
+      }
+      deptSummary[deptId].total_employees++;
+    });
+
+    (logs || []).forEach(log => {
+      // Find employee's department
+      const emp = (employees || []).find(e => e.id === log.employee_db_id);
+      const deptId = emp?.dtr_user?.FK_dept || 'unknown';
+      
+      if (deptSummary[deptId]) {
+        // Check if active (no time_out)
+        if (!log.time_out) {
+          deptSummary[deptId].active_count++;
+        }
+        
+        // Check if late (after 8:30 AM)
+        const timeIn = new Date(log.time_in);
+        const cutoff = new Date(timeIn);
+        cutoff.setHours(8, 30, 0);
+        if (timeIn > cutoff) {
+          deptSummary[deptId].late_count++;
+        }
+      }
+    });
+
+    res.json(Object.values(deptSummary));
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Failed to load summary" });
+  }
 });
 
 // ==========================
@@ -103,26 +169,23 @@ router.get("/export", verifyToken, requireRole("admin"), async (req, res) => {
     }
 
     // 2. Fetch Data
-    let query = `
-      SELECT 
-        e.name, e.employee_id, e.role, 
-        al.time_in, al.time_out,
-        TIMESTAMPDIFF(MINUTE, al.time_in, COALESCE(al.time_out, NOW())) as duration_minutes,
-        CASE 
-          WHEN TIME(al.time_in) > '08:00:00' THEN 1 ELSE 0 
-        END as is_late
-      FROM attendance_logs al
-      JOIN employees e ON al.employee_db_id = e.id
-      WHERE al.time_in BETWEEN ? AND ?
-    `;
-    
-    let params = [startDate, endDate];
+    const { data: rows, error } = await db.supabase
+      .from('attendance_logs')
+      .select(`
+        time_in,
+        time_out,
+        employees (
+          name,
+          employee_id,
+          role
+        )
+      `)
+      .gte('time_in', startDate.toISOString())
+      .lte('time_in', endDate.toISOString());
 
-    // Note: Since your schema uses dtr_user for departments, this specific SQL 
-    // might need adjustment if you want to filter strictly by deptId here.
-    // For now, it fetches all within the date range as per your existing logic.
-
-    const [rows] = await db.promise().query(query, params);
+    if (error) {
+      throw new Error(error.message);
+    }
 
     // 3. Create Workbook
     const workbook = new ExcelJS.Workbook();
@@ -142,10 +205,18 @@ router.get("/export", verifyToken, requireRole("admin"), async (req, res) => {
       
       const stats = { "All Staff": { total: 0, late: 0, durations: [] } };
       
-      rows.forEach(r => {
+      (rows || []).forEach(r => {
         stats["All Staff"].total++;
-        if (r.is_late) stats["All Staff"].late++;
-        stats["All Staff"].durations.push(r.duration_minutes);
+        const duration = r.time_out ? 
+          (new Date(r.time_out) - new Date(r.time_in)) / 1000 / 60 : 0;
+        stats["All Staff"].durations.push(duration);
+        
+        const timeIn = new Date(r.time_in);
+        const cutoff = new Date(timeIn);
+        cutoff.setHours(8, 0, 0);
+        if (timeIn > cutoff) {
+          stats["All Staff"].late++;
+        }
       });
 
       Object.keys(stats).forEach(dept => {
@@ -169,16 +240,23 @@ router.get("/export", verifyToken, requireRole("admin"), async (req, res) => {
         { header: "Status", key: "status", width: 15 }
       ];
 
-      rows.forEach(r => {
+      (rows || []).forEach(r => {
+        const duration = r.time_out ? 
+          Math.round((new Date(r.time_out) - new Date(r.time_in)) / 1000 / 60) : 0;
+        const timeIn = new Date(r.time_in);
+        const cutoff = new Date(timeIn);
+        cutoff.setHours(8, 0, 0);
+        const isLate = timeIn > cutoff;
+        
         detailSheet.addRow({
-          employee_id: r.employee_id,
-          name: r.name,
-          role: r.role,
+          employee_id: r.employees?.employee_id,
+          name: r.employees?.name,
+          role: r.employees?.role,
           date: new Date(r.time_in).toLocaleDateString(),
           time_in: new Date(r.time_in).toLocaleTimeString(),
           time_out: r.time_out ? new Date(r.time_out).toLocaleTimeString() : "Active",
-          duration: r.duration_minutes,
-          status: r.is_late ? "Late" : "On Time"
+          duration: duration,
+          status: isLate ? "Late" : "On Time"
         });
       });
       
@@ -202,13 +280,28 @@ router.get("/export", verifyToken, requireRole("admin"), async (req, res) => {
       ];
 
       const empStats = {};
-      rows.forEach(r => {
-        if (!empStats[r.employee_id]) {
-          empStats[r.employee_id] = { name: r.name, days: 0, hours: 0, late: 0 };
+      (rows || []).forEach(r => {
+        const empId = r.employees?.employee_id;
+        if (!empStats[empId]) {
+          empStats[empId] = { 
+            employee_id: empId,
+            name: r.employees?.name, 
+            days: 0, 
+            hours: 0, 
+            late: 0 
+          };
         }
-        empStats[r.employee_id].days++;
-        empStats[r.employee_id].hours += (r.duration_minutes / 60);
-        if (r.is_late) empStats[r.employee_id].late++;
+        empStats[empId].days++;
+        const duration = r.time_out ? 
+          (new Date(r.time_out) - new Date(r.time_in)) / 1000 / 60 / 60 : 0;
+        empStats[empId].hours += duration;
+        
+        const timeIn = new Date(r.time_in);
+        const cutoff = new Date(timeIn);
+        cutoff.setHours(8, 0, 0);
+        if (timeIn > cutoff) {
+          empStats[empId].late++;
+        }
       });
 
       Object.values(empStats).forEach(stat => {
@@ -231,14 +324,21 @@ router.get("/export", verifyToken, requireRole("admin"), async (req, res) => {
         { header: "Remark", key: "remark", width: 15 }
       ];
 
-      rows.forEach(r => {
+      (rows || []).forEach(r => {
+        const duration = r.time_out ? 
+          Math.round((new Date(r.time_out) - new Date(r.time_in)) / 1000 / 60) : 0;
+        const timeIn = new Date(r.time_in);
+        const cutoff = new Date(timeIn);
+        cutoff.setHours(8, 0, 0);
+        const isLate = timeIn > cutoff;
+        
         breakdownSheet.addRow({
           date: new Date(r.time_in).toLocaleDateString(),
-          name: r.name,
+          name: r.employees?.name,
           time_in: new Date(r.time_in).toLocaleTimeString(),
           time_out: r.time_out ? new Date(r.time_out).toLocaleTimeString() : "-",
-          duration: `${r.duration_minutes} mins`,
-          remark: r.is_late ? "LATE" : "-"
+          duration: `${duration} mins`,
+          remark: isLate ? "LATE" : "-"
         });
       });
     }
