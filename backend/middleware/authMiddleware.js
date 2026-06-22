@@ -3,7 +3,7 @@ const db = require("../config/db");
 
 const JWT_SECRET = process.env.JWT_SECRET || "secret";
 
-const verifyToken = (req, res, next) => {
+const verifyToken = async (req, res, next) => {
   const token = req.cookies.token;
 
   if (!token) {
@@ -15,30 +15,30 @@ const verifyToken = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    db.query(
-      "SELECT active_session FROM employees WHERE id = ?",
-      [decoded.id],
-      (err, result) => {
-        if (err || result.length === 0) {
-          return res.status(401).json({
-            message: "Unauthorized",
-          });
-        }
+    // Migrated to Supabase
+    const { data, error } = await db.supabase
+      .from('employees')
+      .select('active_session')
+      .eq('id', decoded.id)
+      .single();
 
-        const activeSession = result[0].active_session;
+    if (error || !data) {
+      return res.status(401).json({
+        message: "Unauthorized",
+      });
+    }
 
+    const activeSession = data.active_session;
 
-        if (activeSession !== decoded.session_id) {
-          return res.status(401).json({
-            message: "Session expired",
-          });
-        }
+    if (activeSession !== decoded.session_id) {
+      return res.status(401).json({
+        message: "Session expired",
+      });
+    }
 
-        req.user = decoded;
+    req.user = decoded;
 
-        next();
-      }
-    );
+    next();
   } catch (err) {
     return res.status(401).json({
       message: "Invalid token",
