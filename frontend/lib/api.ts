@@ -65,7 +65,13 @@ export const api = {
   getStatus: (employee_db_id: number) => request(`/time/status/${employee_db_id}`),
 
   // 📊 LOGS
-  getLogs: (page = 1, limit = 10) => request(`/logs?page=${page}&limit=${limit}`),
+  getLogs: (page = 1, limit = 10, search = "") => {
+    const queryParams = new URLSearchParams();
+    queryParams.append('page', page.toString());
+    queryParams.append('limit', limit.toString());
+    if (search) queryParams.append('search', search);
+    return request(`/logs?${queryParams.toString()}`);
+  },
   getMyLogs: (employee_db_id: number) => request(`/logs/me/${employee_db_id}`),
   getMonthlyLogs: (employee_db_id: number, year: number, month: number) =>
     request(`/monthly/${employee_db_id}/${year}/${month}`),

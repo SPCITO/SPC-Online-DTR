@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import ExcelJS from "exceljs";
@@ -44,31 +44,75 @@ export default function AdminDashboardPage() {
   const [filter, setFilter] = useState<FilterType>("today");
   const [search, setSearch] = useState("");
 
-  // FETCH LOGS
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [limit] = useState(5); 
+  const [hasMore, setHasMore] = useState(true);
+  const [fetchingMore, setFetchingMore] = useState(false);
+
+  // Debounced Search State
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // ✅ FIX 1: Debounce Search Input Only
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1); // Reset to page 1 when search term changes
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // FETCH LOGS with Pagination
   useEffect(() => {
     const fetchLogs = async () => {
+      if (page === 1) {
+        setLoading(true);
+        setLogs([]); // Clear list for new search/page 1
+      } else {
+        setFetchingMore(true);
+      }
+
       try {
-        const data = await api.getLogs();
-        setLogs(Array.isArray(data) ? data : []);
+        const data = await api.getLogs(page, limit, debouncedSearch);
+        const newLogs: any[] = Array.isArray(data) ? data : [];
+
+        if (newLogs.length === 0 || newLogs.length < limit) {
+          setHasMore(false);
+        } else {
+          setHasMore(true);
+        }
+
+        setLogs((prev) => {
+          if (page === 1) return newLogs;
+          
+          // Deduplicate for "Load More"
+          const existingIds = new Set(prev.map(l => String(l.id)));
+          const uniqueNew = newLogs.filter(l => !existingIds.has(String(l.id)));
+          return [...prev, ...uniqueNew];
+        });
+
       } catch (err) {
         console.error(err);
       } finally {
         setLoading(false);
+        setFetchingMore(false);
       }
     };
     fetchLogs();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, page, limit]);
 
-  // FILTERED LOGS
+  const handleLoadMore = () => {
+    if (!fetchingMore && hasMore) {
+      setPage((prev) => prev + 1);
+    }
+  };
+
+  // FILTERED LOGS (Client-side filtering by time period only)
   const filteredLogs = useMemo(() => {
     const now = new Date();
     return logs.filter((log) => {
-      const matchesSearch =
-        log.name?.toLowerCase().includes(search.toLowerCase()) ||
-        log.employee_db_id?.toString().includes(search);
-
-      if (!matchesSearch) return false;
-
       const timeIn = new Date(log.time_in);
 
       if (filter === "today") {
@@ -86,7 +130,7 @@ export default function AdminDashboardPage() {
       }
       return true;
     });
-  }, [logs, filter, search]);
+  }, [logs, filter]);
 
   // HELPERS
   const getStatus = (log: any) => {
@@ -423,10 +467,11 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+                    {/* Table Container with Internal Scroll */}
+          <div className="relative w-full overflow-y-auto" style={{ maxHeight: '500px' }}>
             <table className="w-full min-w-[1000px]">
-              <thead className="bg-gray-50/50">
-                <tr className="text-xs uppercase tracking-wider text-gray-500 font-bold border-b border-gray-100">
+              <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-gray-100">
+                <tr className="text-xs uppercase tracking-wider text-gray-500 font-bold">
                   <th className="p-5 text-left">Employee</th>
                   <th className="p-5 text-left">Department</th>
                   <th className="p-5 text-left">Time In</th>
@@ -436,7 +481,14 @@ export default function AdminDashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filteredLogs.length > 0 ? (
+                {loading && page === 1 ? (
+                  <tr>
+                    <td colSpan={6} className="p-12 text-center">
+                      <Loader2 className="w-8 h-8 animate-spin text-emerald-600 mx-auto" />
+                      <p className="text-gray-500 mt-3 font-medium">Loading logs...</p>
+                    </td>
+                  </tr>
+                ) : filteredLogs.length > 0 ? (
                   filteredLogs.map((log, i) => {
                     const status = getStatus(log);
                     return (
@@ -468,6 +520,20 @@ export default function AdminDashboardPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Load More Button */}
+          {!loading && hasMore && filteredLogs.length > 0 && (
+            <div className="p-6 border-t border-gray-100 flex justify-center">
+              <button
+                onClick={handleLoadMore}
+                disabled={fetchingMore}
+                className="px-8 py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-200 flex items-center gap-2"
+              >
+                {fetchingMore ? <Loader2 size={18} className="animate-spin" /> : <Users size={18} />}
+                {fetchingMore ? 'Loading...' : 'Load More'}
+              </button>
+            </div>
+          )}
         </div>
 
       </div>
