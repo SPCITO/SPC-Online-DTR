@@ -69,7 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_employees_employee_id ON employees(employee_id);
 CREATE INDEX IF NOT EXISTS idx_employees_dtr_user_id ON employees(dtr_user_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_employee_db_id ON attendance_logs(employee_db_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_time_in ON attendance_logs(time_in);
-CREATE INDEX IF NOT EXISTS idx_attendance_date_in ON attendance_logs((time_in::date));
+CREATE INDEX IF NOT EXISTS idx_attendance_date_in ON attendance_logs USING btree (date_trunc('day', time_in));
 CREATE INDEX IF NOT EXISTS idx_security_logs_employee_id ON security_logs(employee_id);
 CREATE INDEX IF NOT EXISTS idx_security_logs_timestamp ON security_logs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_dtr_user_groupno ON dtr_user(groupno);
