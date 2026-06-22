@@ -1,4 +1,5 @@
 const { createClient } = require("@supabase/supabase-js");
+const ws = require("ws");
 require("dotenv").config();
 
 // Supabase client configuration
@@ -10,7 +11,14 @@ if (!supabaseUrl || !supabaseKey) {
   process.exit(1);
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  realtime: {
+    params: {
+      eventsPerSecond: 10
+    },
+    transport: ws
+  }
+});
 
 /**
  * Database helper with MySQL-compatible API for Supabase

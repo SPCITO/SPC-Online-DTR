@@ -6,11 +6,11 @@ const db = require("../config/db");
 // GET ALL LOGS (ADMIN)
 // ==========================
 router.get("/", async (req, res) => {
-  const { page = 1, limit = 10 } = req.query;
+  const { page = 1, limit = 10, search = "" } = req.query;
   const offset = (page - 1) * limit;
   
   try {
-    const { data, error } = await db.supabase
+    let query = db.supabase
       .from('attendance_logs')
       .select(`
         id,
@@ -27,8 +27,17 @@ router.get("/", async (req, res) => {
           )
         )
       `)
-      .order('time_in', { ascending: false })
-      .range(offset, offset + parseInt(limit) - 1);
+      .order('time_in', { ascending: false });
+
+    // Apply search filter if provided
+    if (search && search.trim() !== "") {
+      query = query.or(`employees.dtr_user.fullname.ilike.%${search}%,employee_db_id.eq.${search}`);
+    }
+
+    // Apply pagination
+    query = query.range(offset, offset + parseInt(limit) - 1);
+
+    const { data, error } = await query;
 
     if (error) {
       console.error(error);
