@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://spc-dtr-backend.onrender.com";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://spc-dtr-backend.onrender.com/api";
 
 // ✅ 1. DEFINE REQUEST HELPER FIRST
 const request = async (endpoint: string, options: any = {}) => {
