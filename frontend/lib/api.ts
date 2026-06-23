@@ -2,6 +2,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://spc-dtr-backend.onre
 
 // ✅ 1. DEFINE REQUEST HELPER FIRST
 const request = async (endpoint: string, options: any = {}) => {
+  console.log(`API Request: ${endpoint}`, `${API_URL}${endpoint}`);
   try {
     const res = await fetch(`${API_URL}${endpoint}`, {
       ...options,
@@ -12,12 +13,16 @@ const request = async (endpoint: string, options: any = {}) => {
       },
     });
 
+    console.log(`API Response status: ${res.status}`);
+
     let data;
     try {
       data = await res.json();
     } catch {
       data = null;
     }
+
+    console.log(`API Response data:`, data);
 
     if (!res.ok) {
       if (endpoint === "/logout") {

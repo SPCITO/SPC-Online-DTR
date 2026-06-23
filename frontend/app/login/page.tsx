@@ -23,32 +23,41 @@ export default function LoginPage() {
       setLoading(true);
       setError("");
 
+      console.log("Attempting login with username:", username);
+      
       // LOGIN
       const loginRes = await api.login({
         username,
         password,
       });
 
+      console.log("Login response:", loginRes);
+
       // IMPORTANT:
       // backend already returns user object
       const user = loginRes?.user;
 
+      console.log("User object from response:", user);
+
       if (!user) {
+        console.error("No user object in response");
         throw new Error("Failed to get user session");
       }
 
       // FIRST LOGIN FLOW
       // if using default password SPC0
       if (password === "SPC0") {
+        console.log("First login detected, redirecting to change-password");
         router.replace("/change-password");
         return;
       }
 
       // EVERYONE GOES TO DASHBOARD
+      console.log("Redirecting to dashboard");
       router.replace("/dashboard");
 
     } catch (err: any) {
-      console.error(err);
+      console.error("Login error:", err);
 
       setError(
         err?.message || "Login failed"
