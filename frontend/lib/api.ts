@@ -1,16 +1,45 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://spc-dtr-backend.onrender.com/api";
 
-// ✅ 1. DEFINE REQUEST HELPER FIRST
+// Helper to get token from localStorage
+const getToken = () => {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('auth_token');
+  }
+  return null;
+};
+
+// Helper to save token
+const saveToken = (token: string) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('auth_token', token);
+  }
+};
+
+// Helper to remove token
+const removeToken = () => {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user');
+  }
+};
+
 const request = async (endpoint: string, options: any = {}) => {
+  const token = getToken();
+  
+  // ✅ Add Authorization header if token exists
+  const headers = {
+    "Content-Type": "application/json",
+    ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+    ...(options.headers || {}),
+  };
+
   console.log(`API Request: ${endpoint}`, `${API_URL}${endpoint}`);
+  
   try {
     const res = await fetch(`${API_URL}${endpoint}`, {
       ...options,
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(options.headers || {}),
-      },
+      headers,
+      // credentials: "include", // No longer needed for cookies
     });
 
     console.log(`API Response status: ${res.status}`);
@@ -24,14 +53,28 @@ const request = async (endpoint: string, options: any = {}) => {
 
     console.log(`API Response data:`, data);
 
+    // ✅ SAVE TOKEN IF LOGIN SUCCESSFUL
+    if (endpoint === "/login" && res.ok && data?.token) {
+      saveToken(data.token);
+      if (data.user) {
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
+      // Return data without token exposed to components if desired, or keep it
+      const { token, ...rest } = data;
+      return rest;
+    }
+
     if (!res.ok) {
       if (endpoint === "/logout") {
+        removeToken();
         return { success: true };
       }
 
       if (res.status === 401) {
-        localStorage.removeItem("user");
-        window.location.href = "/login";
+        removeToken();
+        if (typeof window !== 'undefined') {
+          window.location.href = "/login";
+        }
         return;
       }
 
@@ -41,26 +84,22 @@ const request = async (endpoint: string, options: any = {}) => {
     return data;
   } catch (err: any) {
     console.error("Backend unreachable:", err);
-
     if (endpoint === "/logout") {
+      removeToken();
       return { success: true };
     }
-
     throw new Error("Backend is unreachable");
   }
 };
 
-// ✅ 2. DEFINE API OBJECT
 export const api = {
-  // 🔐 AUTH
   login: (data: any) =>
     request("/login", { method: "POST", body: JSON.stringify(data) }),
-
+  
   logout: () => request("/logout", { method: "POST" }),
-
+  
   me: () => request("/me"),
-
-  // ⏱️ DTR
+  
   timeIn: (employee_db_id: number) =>
     request("/dtr/time-in", { method: "POST", body: JSON.stringify({ employee_db_id }) }),
 
@@ -69,7 +108,6 @@ export const api = {
 
   getStatus: (employee_db_id: number) => request(`/time/status/${employee_db_id}`),
 
-  // 📊 LOGS
   getLogs: (page = 1, limit = 10, search = "") => {
     const queryParams = new URLSearchParams();
     queryParams.append('page', page.toString());
@@ -77,12 +115,12 @@ export const api = {
     if (search) queryParams.append('search', search);
     return request(`/logs?${queryParams.toString()}`);
   },
+  
   getMyLogs: (employee_db_id: number) => request(`/logs/me/${employee_db_id}`),
+  
   getMonthlyLogs: (employee_db_id: number, year: number, month: number) =>
     request(`/monthly/${employee_db_id}/${year}/${month}`),
 
-  // 👤 EMPLOYEES
-  // Updated to handle pagination object
   getEmployees: (params?: { page?: number; limit?: number; search?: string }) => {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.append('page', params.page.toString());
@@ -95,18 +133,15 @@ export const api = {
   addEmployee: (data: any) =>
     request("/employees", { method: "POST", body: JSON.stringify(data) }),
 
-  // ✅ NEW: Update Employee (Fixes the TS error)
   updateEmployee: (id: number | string, data: any) =>
     request(`/employees/${id}`, { 
       method: "PUT", 
       body: JSON.stringify(data) 
     }),
 
-  // ✅ NEW: Delete Employee (Fixes the TS error)
   deleteEmployee: (id: number | string) =>
     request(`/employees/${id}`, { method: "DELETE" }),
 
-  // 🏢 DEPARTMENTS
   getDepartments: () => request("/departments"),
   getDepartmentLogsByDepartment: (deptId: number) =>
     request(`/departments/${deptId}/logs`),
@@ -118,10 +153,8 @@ export const api = {
     return request(`/departments/export${params.toString() ? `?${params.toString()}` : ""}`);
   },
 
-  // 🔒 PASSWORD
   changePassword: (data: { newPassword: string }) =>
     request("/change-password", { method: "POST", body: JSON.stringify(data) }),
 
-  // ⏰ SERVER TIME
   getTime: () => request("/time"),
 };

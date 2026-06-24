@@ -4,14 +4,21 @@ const db = require("../config/db");
 const JWT_SECRET = process.env.JWT_SECRET || "secret";
 
 const verifyToken = async (req, res, next) => {
-  const token = req.cookies.token;
+
+    // ✅ CHECK HEADER FIRST (For Frontend SPA)
+  let token = req.headers.authorization?.split(" ")[1];
+
+  // ✅ FALLBACK TO COOKIE (For backwards compatibility)
+  if (!token) {
+    token = req.cookies.token;
+  }
 
   if (!token) {
     return res.status(401).json({
       message: "Unauthorized",
     });
   }
-
+  
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
 

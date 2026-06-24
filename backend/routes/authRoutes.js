@@ -82,13 +82,6 @@ router.post("/login", async (req, res) => {
       { expiresIn: "1d" }
     );
 
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 1000 * 60 * 60 * 24,
-    });
-
     logSecurityEvent({
       employee_id: user.empid,
       action_type: "LOGIN",
@@ -100,6 +93,7 @@ router.post("/login", async (req, res) => {
     res.json({
       success: true,
       mustChangePassword: isUsingDefaultPassword,
+      token: token, 
       user: {
         id: user.id,
         employee_db_id: user.id,
