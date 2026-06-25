@@ -6,86 +6,104 @@ const db = require("../config/db");
 // =====================================
 // TIME IN
 // =====================================
-router.post("/time-in", (req, res) => {
+router.post("/time-in", async (req, res) => {
   const { employee_db_id } = req.body;
+  
+  try {
+    const now = new Date().toISOString();
+    
+    const { error } = await db.supabase
+      .from('attendance_logs')
+      .insert([{ employee_db_id, time_in: now }]);
 
-  db.query(
-    `
-    INSERT INTO attendance_logs (employee_db_id, time_in)
-    VALUES (?, NOW())
-    `,
-    [employee_db_id],
-    (err) => {
-      if (err) return res.status(500).json({ message: "Time In failed" });
-      res.json({ message: "Time In recorded" });
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ message: "Time In failed" });
     }
-  );
+    
+    res.json({ message: "Time In recorded" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Time In failed" });
+  }
 });
 
 // =====================================
 // TIME OUT
 // =====================================
-router.post("/time-out", (req, res) => {
+router.post("/time-out", async (req, res) => {
   const { employee_db_id } = req.body;
+  
+  try {
+    const now = new Date().toISOString();
+    
+    // Find the latest attendance log without time_out
+    const { data: logs } = await db.supabase
+      .from('attendance_logs')
+      .select('id')
+      .eq('employee_db_id', employee_db_id)
+      .is('time_out', null)
+      .order('time_in', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-  db.query(
-    `
-    UPDATE attendance_logs
-    SET time_out = NOW()
-    WHERE employee_db_id = ?
-    AND time_out IS NULL
-    ORDER BY time_in DESC
-    LIMIT 1
-    `,
-    [employee_db_id],
-    (err) => {
-      if (err) return res.status(500).json({ message: "Time Out failed" });
-      res.json({ message: "Time Out recorded" });
+    if (!logs) {
+      return res.status(404).json({ message: "No active time-in record found" });
     }
-  );
+
+    const { error } = await db.supabase
+      .from('attendance_logs')
+      .update({ time_out: now })
+      .eq('id', logs.id);
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ message: "Time Out failed" });
+    }
+    
+    res.json({ message: "Time Out recorded" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Time Out failed" });
+  }
 });
 
 // =====================================
 // STATUS
 // =====================================
-router.get("/status/:employee_db_id", (req, res) => {
+router.get("/status/:employee_db_id", async (req, res) => {
   const { employee_db_id } = req.params;
+  
+  try {
+    const { data, error } = await db.supabase
+      .from('attendance_logs')
+      .select('*')
+      .eq('employee_db_id', employee_db_id)
+      .is('time_out', null)
+      .order('time_in', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-  db.query(
-    `
-    SELECT *
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ message: "Status check failed" });
+    }
 
-    FROM attendance_logs
-
-    WHERE employee_db_id = ?
-    AND time_out IS NULL
-
-    ORDER BY time_in DESC
-    LIMIT 1
-    `,
-    [employee_db_id],
-    (err, result) => {
-      if (err) {
-        console.error(err);
-
-        return res.status(500).json({
-          message: "Status check failed",
-        });
-      }
-
-      if (result.length === 0) {
-        return res.json({
-          status: "OUT",
-          time_in: null,
-        });
-      }
-
+    if (!data) {
       return res.json({
-        status: "IN",
-        time_in: result[0].time_in,
+        status: "OUT",
+        time_in: null,
       });
     }
-  );
+
+    return res.json({
+      status: "IN",
+      time_in: data.time_in,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Status check failed" });
+  }
 });
 
 // =====================================
