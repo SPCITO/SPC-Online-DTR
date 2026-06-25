@@ -9,6 +9,12 @@ const app = express();
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000";
 
 // middleware
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://dtr.sanpablocolleges.edu.ph",
+  "https://spc-online-dtr.vercel.app"
+];
+
 app.use(
   cors({
     origin: CORS_ORIGIN,
