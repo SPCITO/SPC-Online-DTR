@@ -270,8 +270,8 @@ export default function DepartmentPage() {
               <div className="space-y-4">
 
                 <div className="flex justify-between">
-                  <span>Total Logs</span>
-                  <span className="font-bold">
+                  <span className="text-black">Total Logs</span>
+                  <span className="font-bold text-black">
                     {logs.length}
                   </span>
                 </div>
