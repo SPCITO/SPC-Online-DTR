@@ -24,46 +24,64 @@ router.get("/", verifyToken, (req, res) => {
 // =====================================
 // GET EMPLOYEES BY DEPARTMENT
 // =====================================
-router.get("/:deptId/logs", async (req, res) => {
-  const { deptId } = req.params;
-  
+router.get("/:deptId/logs", verifyToken, async (req, res) => {
   try {
+    const deptId = Number(req.params.deptId);
+
+    // Fetch attendance logs with employee + department relation
     const { data, error } = await db.supabase
-      .from('attendance_logs')
+      .from("attendance_logs")
       .select(`
         id,
+        employee_db_id,
         time_in,
         time_out,
         employees (
+          id,
           name,
+          employee_id,
           role,
+          dtr_user_id,
           dtr_user (
+            PK_user,
             groupno
           )
         )
       `)
-      .eq('employees.dtr_user->>groupno', deptId)
-      .order('time_in', { ascending: false });
+      .order("time_in", { ascending: false });
 
     if (error) {
       console.error(error);
-      return res.status(500).json({ message: "Failed to fetch department logs" });
+      return res.status(500).json({
+        message: "Failed to fetch department logs",
+      });
     }
 
-    // Transform data
-    const transformed = (data || []).map(log => ({
-      id: log.id,
-      time_in: log.time_in,
-      time_out: log.time_out,
-      name: log.employees?.name,
-      role: log.employees?.role,
-      department_id: log.employees?.dtr_user?.groupno
-    }));
+    // Filter after fetching
+    const logs = (data || [])
+      .filter(
+        (row) =>
+          Number(row.employees?.dtr_user?.groupno) === deptId
+      )
+      .map((row) => ({
+        id: row.id,
+        employee_db_id: row.employee_db_id,
+        name: row.employees?.name,
+        employee_id: row.employees?.employee_id,
+        role: row.employees?.role,
+        department_id: row.employees?.dtr_user?.groupno,
+        time_in: row.time_in,
+        time_out: row.time_out,
+      }));
 
-    res.json(transformed);
+    res.json(logs);
+
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: "Failed to fetch department logs" });
+
+    res.status(500).json({
+      message: "Failed to fetch department logs",
+    });
   }
 });
 
