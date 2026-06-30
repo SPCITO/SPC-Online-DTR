@@ -277,14 +277,14 @@ export default function DepartmentPage() {
                 </div>
 
                 <div className="flex justify-between">
-                  <span>Late Employees</span>
+                  <span className="text-black">Late Employees</span>
                   <span className="font-bold text-yellow-600">
                     {lateCount}
                   </span>
                 </div>
 
                 <div className="flex justify-between">
-                  <span>Currently Active</span>
+                  <span className="text-black">Currently Active</span>
                   <span className="font-bold text-emerald-600">
                     {activeCount}
                   </span>
@@ -301,7 +301,7 @@ export default function DepartmentPage() {
               <div className="space-y-4">
 
                 <div className="flex justify-between">
-                  <span>On-Time Rate</span>
+                  <span className="text-black">On-Time Rate</span>
 
                   <span className="font-bold text-emerald-600">
                     {logs.length
@@ -317,7 +317,7 @@ export default function DepartmentPage() {
                 </div>
 
                 <div className="flex justify-between">
-                  <span>Late Rate</span>
+                  <span className="text-black">Late Rate</span>
 
                   <span className="font-bold text-yellow-600">
                     {logs.length
