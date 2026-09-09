@@ -8,30 +8,34 @@ const logSecurityEvent = require("../utils/securityLogger");
 // TIME IN
 // ==========================
 router.post("/time-in", async (req, res) => {
-  const { employee_db_id } = req.body;
-  
+  const employee_db_id = req.user.id;
   const now = new Date();
-  
-  if (!employee_db_id) {
-    return res.status(400).json({
-      message: "Employee DB ID is required",
-    });
-  }
-  
-  try {
-    const { error } = await db.supabase
-      .from('attendance_logs')
-      .insert([{
-        employee_db_id,
-        time_in: now.toISOString()
-      }]);
 
-    if (error) {
-      console.error(error);
-      return res.status(500).json({
-        message: "Time In failed",
+  try {
+    // Check for existing open time-in record today (duplicate prevention)
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+    const [existing] = await db.promise().query(
+      `SELECT id FROM attendance_logs
+       WHERE employee_db_id = ?
+       AND time_in >= ? AND time_in <= ?
+       AND time_out IS NULL
+       LIMIT 1`,
+      [employee_db_id, startOfDay, endOfDay]
+    );
+
+    if (existing.length > 0) {
+      return res.status(409).json({
+        message: "Already timed in today. Please time out first.",
       });
     }
+
+    // Insert new time-in record
+    await db.promise().query(
+      `INSERT INTO attendance_logs (employee_db_id, time_in) VALUES (?, ?)`,
+      [employee_db_id, now]
+    );
 
     logSecurityEvent({
       employee_id: employee_db_id,
@@ -46,7 +50,7 @@ router.post("/time-in", async (req, res) => {
       time: now,
     });
   } catch (err) {
-    console.error(err);
+    console.error("TIME IN ERROR:", err);
     return res.status(500).json({
       message: "Time In failed",
     });
@@ -57,50 +61,31 @@ router.post("/time-in", async (req, res) => {
 // TIME OUT
 // ==========================
 router.post("/time-out", async (req, res) => {
-  const { employee_db_id } = req.body;
-  
+  const employee_db_id = req.user.id;
   const now = new Date();
-  
-  if (!employee_db_id) {
-    return res.status(400).json({
-      message: "Employee DB ID is required",
-    });
-  }
-  
+
   try {
-    // Get today's date range
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
-    
-    // Find the latest attendance log for today without time_out
-    const { data: logs } = await db.supabase
-      .from('attendance_logs')
-      .select('id')
-      .eq('employee_db_id', employee_db_id)
-      .gte('time_in', startOfDay)
-      .lte('time_in', endOfDay)
-      .is('time_out', null)
-      .order('time_in', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Find the latest open attendance record for this employee (scoped to authenticated user)
+    const [rows] = await db.promise().query(
+      `SELECT id FROM attendance_logs
+       WHERE employee_db_id = ?
+       AND time_out IS NULL
+       ORDER BY time_in DESC
+       LIMIT 1`,
+      [employee_db_id]
+    );
 
-    if (!logs) {
+    if (rows.length === 0) {
       return res.status(404).json({
-        message: "No active time-in record found for today",
+        message: "No active time-in record found",
       });
     }
 
-    const { error } = await db.supabase
-      .from('attendance_logs')
-      .update({ time_out: now.toISOString() })
-      .eq('id', logs.id);
-
-    if (error) {
-      console.error(error);
-      return res.status(500).json({
-        message: "Time Out failed",
-      });
-    }
+    // Update only this employee's record
+    await db.promise().query(
+      `UPDATE attendance_logs SET time_out = ? WHERE id = ?`,
+      [now, rows[0].id]
+    );
 
     logSecurityEvent({
       employee_id: employee_db_id,
@@ -115,7 +100,7 @@ router.post("/time-out", async (req, res) => {
       time: now,
     });
   } catch (err) {
-    console.error(err);
+    console.error("TIME OUT ERROR:", err);
     return res.status(500).json({
       message: "Time Out failed",
     });
