@@ -5,31 +5,24 @@ const db = require("../config/db");
 // GET MONTHLY LOGS
 router.get("/:employee_db_id/:year/:month", async (req, res) => {
   const { employee_db_id, year, month } = req.params;
-  
-  try {
-    const startDate = new Date(year, month - 1, 1).toISOString();
-    const endDate = new Date(year, month, 0, 23, 59, 59).toISOString();
-    
-    const { data: results, error } = await db.supabase
-      .from('attendance_logs')
-      .select('*')
-      .eq('employee_db_id', employee_db_id)
-      .gte('time_in', startDate)
-      .lte('time_in', endDate)
-      .order('time_in', { ascending: true });
 
-    if (error) {
-      console.error(error);
-      return res.status(500).json({ message: "Error fetching monthly logs", error: error.message });
-    }
+  try {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    const [results] = await db.promise().query(
+      `SELECT * FROM attendance_logs
+       WHERE employee_db_id = ?
+       AND time_in >= ? AND time_in <= ?
+       ORDER BY time_in ASC`,
+      [employee_db_id, startDate, endDate]
+    );
 
     // GROUP BY DAY
     const grouped = {};
 
     (results || []).forEach((log) => {
-      const date = new Date(log.time_in)
-        .toISOString()
-        .split("T")[0];
+      const date = new Date(log.time_in).toISOString().split("T")[0];
 
       if (!grouped[date]) {
         grouped[date] = {
@@ -52,12 +45,18 @@ router.get("/:employee_db_id/:year/:month", async (req, res) => {
         (new Date(d.last_out) - new Date(d.first_in)) /
         (1000 * 60 * 60);
 
+      // Late detection: 8:30 AM cutoff
+      const inTime = new Date(d.first_in);
+      const cutoff = new Date(d.first_in);
+      cutoff.setHours(8, 30, 0, 0);
+      const isLate = inTime > cutoff;
+
       return {
         date: d.date,
         first_in: d.first_in,
         last_out: d.last_out,
         hours: isNaN(hours) ? 0 : Number(hours.toFixed(2)),
-        late: new Date(d.first_in).getHours() > 8, // example rule
+        late: isLate,
       };
     });
 
@@ -77,7 +76,7 @@ router.get("/:employee_db_id/:year/:month", async (req, res) => {
       days,
     });
   } catch (err) {
-    console.error(err);
+    console.error("GET monthly logs error:", err);
     return res.status(500).json({ message: "Error", error: err.message });
   }
 });

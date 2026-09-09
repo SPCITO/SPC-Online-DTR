@@ -16,46 +16,29 @@ router.get("/", verifyToken, requireRole("admin"), async (req, res) => {
     const search = req.query.search || '';
     const offset = (page - 1) * limit;
 
-    // Build query for count
-    let countQuery = db.supabase.from('employees').select('*', { count: 'exact', head: true });
-    
-    // Build query for data
-    let dataQuery = db.supabase
-      .from('employees')
-      .select(`
-        id,
-        name,
-        employee_id,
-        email,
-        role,
-        created_at,
-        is_active
-      `)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    let countSql = "SELECT COUNT(*) as total FROM employees";
+    let dataSql = "SELECT id, name, employee_id, email, role, created_at, is_active FROM employees";
+    const params = [];
 
     if (search) {
-      const searchTerm = `%${search}%`;
-      countQuery = countQuery.or(`name.ilike.${searchTerm},employee_id.ilike.${searchTerm},email.ilike.${searchTerm}`);
-      dataQuery = dataQuery.or(`name.ilike.${searchTerm},employee_id.ilike.${searchTerm},email.ilike.${searchTerm}`);
+      const where = " WHERE name LIKE ? OR employee_id LIKE ? OR email LIKE ?";
+      countSql += where;
+      dataSql += where;
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
-    // Get total count
-    const { count: total } = await countQuery;
-
-    // Get data
-    const { data: rows, error } = await dataQuery;
-
-    if (error) {
-      console.error("Error fetching employees:", error);
-      return res.status(500).json({ message: "Failed to fetch employees", error: error.message });
-    }
+    const [[{ total }]] = await db.promise().query(countSql, params);
+    dataSql += " ORDER BY created_at DESC LIMIT ? OFFSET ?";
+    const [rows] = await db.promise().query(dataSql, [...params, limit, offset]);
 
     const formattedRows = (rows || []).map(row => ({
-      ...row,
       id: String(row.id),
-      // Convert boolean for frontend consistency
-      is_active: row.is_active === true 
+      name: row.name,
+      employee_id: row.employee_id,
+      email: row.email,
+      role: row.role,
+      created_at: row.created_at,
+      is_active: row.is_active === 1
     }));
 
     return res.json({
@@ -88,44 +71,31 @@ router.post("/", verifyToken, requireRole("admin"), async (req, res) => {
     }
 
     // Check if employee exists
-    const { data: existing } = await db.supabase
-      .from('employees')
-      .select('id')
-      .or(`employee_id.eq.${employee_id},email.eq.${email}`)
-      .maybeSingle();
+    const [existing] = await db.promise().query(
+      "SELECT id FROM employees WHERE employee_id = ? OR email = ? LIMIT 1",
+      [employee_id, email]
+    );
 
-    if (existing) {
+    if (existing.length > 0) {
       return res.status(409).json({ message: "Employee ID or Email already exists." });
     }
 
     const finalPassword = password || "changeme123";
     const hashed = await bcrypt.hash(finalPassword, 10);
 
-    const { data: result, error } = await db.supabase
-      .from('employees')
-      .insert([{
-        name,
-        employee_id,
-        email,
-        password: hashed,
-        role,
-        is_active: true
-      }])
-      .select('id')
-      .single();
+    const [result] = await db.promise().query(
+      "INSERT INTO employees (name, employee_id, email, password, role, is_active) VALUES (?, ?, ?, ?, ?, 1)",
+      [name, employee_id, email, hashed, role]
+    );
 
-    if (error) {
-      console.error("Create employee error:", error);
-      if (error.code === '23505') { // Unique violation
-        return res.status(409).json({ message: "Employee ID or Email already exists" });
-      }
-      return res.status(500).json({ message: "Error creating employee", error: error.message });
-    }
-
-    return res.status(201).json({ message: "Employee created successfully", id: result.id });
+    return res.status(201).json({ message: "Employee created successfully", id: result.insertId });
 
   } catch (error) {
     console.error("POST employee error:", error);
+    // MySQL duplicate entry error code: 1062
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: "Employee ID or Email already exists" });
+    }
     return res.status(500).json({ message: "Error creating employee", error: error.message });
   }
 });
@@ -139,66 +109,64 @@ router.put("/:id", verifyToken, requireRole("admin"), async (req, res) => {
     const { name, employee_id, email, role, is_active } = req.body;
 
     // Check if employee exists
-    const { data: existing } = await db.supabase
-      .from('employees')
-      .select('id')
-      .eq('id', id)
-      .maybeSingle();
-      
-    if (!existing) {
+    const [existing] = await db.promise().query(
+      "SELECT id FROM employees WHERE id = ?",
+      [id]
+    );
+
+    if (existing.length === 0) {
       return res.status(404).json({ message: "Employee not found" });
     }
 
     // Check for duplicates (excluding current user)
-    if (employee_id || email) {
-      let duplicateQuery = db.supabase
-        .from('employees')
-        .select('id')
-        .neq('id', id);
-      
-      if (employee_id) {
-        duplicateQuery = duplicateQuery.eq('employee_id', employee_id);
-      } else if (email) {
-        duplicateQuery = duplicateQuery.eq('email', email);
+    if (employee_id) {
+      const [dup] = await db.promise().query(
+        "SELECT id FROM employees WHERE employee_id = ? AND id != ?",
+        [employee_id, id]
+      );
+      if (dup.length > 0) {
+        return res.status(409).json({ message: "Employee ID already exists" });
       }
-      
-      const { data: duplicates } = await duplicateQuery.maybeSingle();
-      
-      if (duplicates) {
-        return res.status(409).json({ message: "Employee ID or Email already exists" });
+    }
+    if (email) {
+      const [dup] = await db.promise().query(
+        "SELECT id FROM employees WHERE email = ? AND id != ?",
+        [email, id]
+      );
+      if (dup.length > 0) {
+        return res.status(409).json({ message: "Email already exists" });
       }
     }
 
-    // Build update object
-    const updates = {};
-    if (name) updates.name = name;
-    if (employee_id) updates.employee_id = employee_id;
-    if (email) updates.email = email;
-    if (role) updates.role = role;
-    
-    // Handle Enable/Disable (accepts both boolean true/false AND number 1/0)
+    // Build update dynamically
+    const fields = [];
+    const values = [];
+    if (name) { fields.push("name = ?"); values.push(name); }
+    if (employee_id) { fields.push("employee_id = ?"); values.push(employee_id); }
+    if (email) { fields.push("email = ?"); values.push(email); }
+    if (role) { fields.push("role = ?"); values.push(role); }
     if (is_active !== undefined && is_active !== null) {
-      updates.is_active = is_active === true || is_active === 1 ? true : false;
+      fields.push("is_active = ?");
+      values.push(is_active === true || is_active === 1 ? 1 : 0);
     }
 
-    if (Object.keys(updates).length === 0) {
+    if (fields.length === 0) {
       return res.status(400).json({ message: "No fields to update" });
     }
 
-    const { error } = await db.supabase
-      .from('employees')
-      .update(updates)
-      .eq('id', id);
-
-    if (error) {
-      console.error("PUT employee error:", error);
-      return res.status(500).json({ message: "Error updating employee", error: error.message });
-    }
+    values.push(id);
+    await db.promise().query(
+      `UPDATE employees SET ${fields.join(", ")} WHERE id = ?`,
+      values
+    );
 
     return res.json({ message: "Employee updated successfully" });
 
   } catch (error) {
     console.error("PUT employee error:", error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: "Employee ID or Email already exists" });
+    }
     return res.status(500).json({ message: "Error updating employee", error: error.message });
   }
 });
@@ -210,14 +178,13 @@ router.delete("/:id", verifyToken, requireRole("admin"), async (req, res) => {
   try {
     const { id } = req.params;
 
-    const { error } = await db.supabase
-      .from('employees')
-      .delete()
-      .eq('id', id);
+    const [result] = await db.promise().query(
+      "DELETE FROM employees WHERE id = ?",
+      [id]
+    );
 
-    if (error) {
-      console.error("DELETE employee error:", error);
-      return res.status(500).json({ message: "Error deleting employee", error: error.message });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Employee not found" });
     }
 
     return res.json({ message: "Employee deleted successfully" });

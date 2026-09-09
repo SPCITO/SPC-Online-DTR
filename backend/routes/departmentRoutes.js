@@ -22,141 +22,70 @@ router.get("/", verifyToken, (req, res) => {
 });
 
 // =====================================
+// GET DEPARTMENT SUMMARY
+// NOTE: This route MUST be before /:deptId/logs
+// to prevent Express matching "summary" as a deptId.
+// =====================================
+router.get("/summary", verifyToken, async (req, res) => {
+  try {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+    const [rows] = await db.promise().query(
+      `SELECT d.FK_dept AS department_id,
+              COUNT(DISTINCT e.id) AS total_employees,
+              SUM(CASE WHEN al.time_out IS NULL AND al.id IS NOT NULL THEN 1 ELSE 0 END) AS active_count,
+              SUM(CASE WHEN al.id IS NOT NULL AND TIME(al.time_in) > '08:30:00' THEN 1 ELSE 0 END) AS late_count
+       FROM employees e
+       LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
+       LEFT JOIN attendance_logs al ON al.employee_db_id = e.id
+         AND al.time_in >= ? AND al.time_in <= ?
+       GROUP BY d.FK_dept`,
+      [startOfDay, endOfDay]
+    );
+
+    res.json(rows || []);
+  } catch (err) {
+    console.error("GET dept summary error:", err);
+    return res.status(500).json({ message: "Failed to load summary" });
+  }
+});
+
+// =====================================
 // GET EMPLOYEES BY DEPARTMENT
 // =====================================
 router.get("/:deptId/logs", verifyToken, async (req, res) => {
   try {
     const deptId = Number(req.params.deptId);
 
-    // Fetch attendance logs with employee + department relation
-    const { data, error } = await db.supabase
-      .from("attendance_logs")
-      .select(`
-        id,
-        employee_db_id,
-        time_in,
-        time_out,
-        employees (
-          id,
-          name,
-          employee_id,
-          role,
-          dtr_user_id,
-          dtr_user (
-            PK_user,
-            groupno
-          )
-        )
-      `)
-      .order("time_in", { ascending: false });
+    const [rows] = await db.promise().query(
+      `SELECT al.id, al.employee_db_id, al.time_in, al.time_out,
+              e.name, e.employee_id, e.role, d.groupno
+       FROM attendance_logs al
+       JOIN employees e ON al.employee_db_id = e.id
+       LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
+       WHERE d.groupno = ?
+       ORDER BY al.time_in DESC`,
+      [deptId]
+    );
 
-    if (error) {
-      console.error(error);
-      return res.status(500).json({
-        message: "Failed to fetch department logs",
-      });
-    }
-
-    // Filter after fetching
-    const logs = (data || [])
-      .filter(
-        (row) =>
-          Number(row.employees?.dtr_user?.groupno) === deptId
-      )
-      .map((row) => ({
-        id: row.id,
-        employee_db_id: row.employee_db_id,
-        name: row.employees?.name,
-        employee_id: row.employees?.employee_id,
-        role: row.employees?.role,
-        department_id: row.employees?.dtr_user?.groupno,
-        time_in: row.time_in,
-        time_out: row.time_out,
-      }));
+    const logs = (rows || []).map(row => ({
+      id: row.id,
+      employee_db_id: row.employee_db_id,
+      name: row.name,
+      employee_id: row.employee_id,
+      role: row.role,
+      department_id: row.groupno,
+      time_in: row.time_in,
+      time_out: row.time_out,
+    }));
 
     res.json(logs);
 
   } catch (err) {
-    console.error(err);
-
-    res.status(500).json({
-      message: "Failed to fetch department logs",
-    });
-  }
-});
-
-// =====================================
-// GET DEPARTMENT SUMMARY
-// =====================================
-router.get("/summary", async (req, res) => {
-  try {
-    // Get current date range for today
-    const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
-
-    // Fetch all employees with their departments
-    const { data: employees } = await db.supabase
-      .from('employees')
-      .select(`
-        id,
-        dtr_user (
-          FK_dept
-        )
-      `);
-
-    // Fetch today's attendance logs
-    const { data: logs } = await db.supabase
-      .from('attendance_logs')
-      .select(`
-        employee_db_id,
-        time_in,
-        time_out
-      `)
-      .gte('time_in', startOfDay)
-      .lte('time_in', endOfDay);
-
-    // Calculate summary by department
-    const deptSummary = {};
-
-    (employees || []).forEach(emp => {
-      const deptId = emp.dtr_user?.FK_dept || 'unknown';
-      if (!deptSummary[deptId]) {
-        deptSummary[deptId] = {
-          department_id: deptId,
-          total_employees: 0,
-          active_count: 0,
-          late_count: 0
-        };
-      }
-      deptSummary[deptId].total_employees++;
-    });
-
-    (logs || []).forEach(log => {
-      // Find employee's department
-      const emp = (employees || []).find(e => e.id === log.employee_db_id);
-      const deptId = emp?.dtr_user?.FK_dept || 'unknown';
-      
-      if (deptSummary[deptId]) {
-        // Check if active (no time_out)
-        if (!log.time_out) {
-          deptSummary[deptId].active_count++;
-        }
-        
-        // Check if late (after 8:30 AM)
-        const timeIn = new Date(log.time_in);
-        const cutoff = new Date(timeIn);
-        cutoff.setHours(8, 30, 0);
-        if (timeIn > cutoff) {
-          deptSummary[deptId].late_count++;
-        }
-      }
-    });
-
-    res.json(Object.values(deptSummary));
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Failed to load summary" });
+    console.error("GET dept logs error:", err);
+    res.status(500).json({ message: "Failed to fetch department logs" });
   }
 });
 
@@ -165,45 +94,35 @@ router.get("/summary", async (req, res) => {
 // ==========================
 router.get("/export", verifyToken, requireRole("admin"), async (req, res) => {
   try {
-    const { deptId, dateRange, type } = req.query; 
+    const { deptId, dateRange, type } = req.query;
 
-    // 1. Calculate Date Range
+    // 1. Calculate Date Range (without mutating `now`)
     const now = new Date();
     let startDate, endDate;
     
     if (dateRange === 'today') {
-      startDate = new Date(now.setHours(0,0,0,0));
-      endDate = new Date(now.setHours(23,59,59,999));
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
     } else if (dateRange === 'week') {
       const dayOfWeek = now.getDay();
       const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); 
-      startDate = new Date(now.setDate(diff));
-      startDate.setHours(0,0,0,0);
-      endDate = new Date(now.setDate(diff + 6));
-      endDate.setHours(23,59,59,999);
+      startDate = new Date(now.getFullYear(), now.getMonth(), diff);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth(), diff + 6);
+      endDate.setHours(23, 59, 59, 999);
     } else { // month
       startDate = new Date(now.getFullYear(), now.getMonth(), 1);
       endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
     }
 
-    // 2. Fetch Data
-    const { data: rows, error } = await db.supabase
-      .from('attendance_logs')
-      .select(`
-        time_in,
-        time_out,
-        employees (
-          name,
-          employee_id,
-          role
-        )
-      `)
-      .gte('time_in', startDate.toISOString())
-      .lte('time_in', endDate.toISOString());
-
-    if (error) {
-      throw new Error(error.message);
-    }
+    // 2. Fetch Data via MySQL JOIN
+    const [rows] = await db.promise().query(
+      `SELECT al.time_in, al.time_out, e.name, e.employee_id, e.role
+       FROM attendance_logs al
+       JOIN employees e ON al.employee_db_id = e.id
+       WHERE al.time_in >= ? AND al.time_in <= ?`,
+      [startDate, endDate]
+    );
 
     // 3. Create Workbook
     const workbook = new ExcelJS.Workbook();
@@ -231,7 +150,7 @@ router.get("/export", verifyToken, requireRole("admin"), async (req, res) => {
         
         const timeIn = new Date(r.time_in);
         const cutoff = new Date(timeIn);
-        cutoff.setHours(8, 0, 0);
+        cutoff.setHours(8, 30, 0, 0);
         if (timeIn > cutoff) {
           stats["All Staff"].late++;
         }
@@ -263,13 +182,13 @@ router.get("/export", verifyToken, requireRole("admin"), async (req, res) => {
           Math.round((new Date(r.time_out) - new Date(r.time_in)) / 1000 / 60) : 0;
         const timeIn = new Date(r.time_in);
         const cutoff = new Date(timeIn);
-        cutoff.setHours(8, 0, 0);
+        cutoff.setHours(8, 30, 0, 0);
         const isLate = timeIn > cutoff;
         
         detailSheet.addRow({
-          employee_id: r.employees?.employee_id,
-          name: r.employees?.name,
-          role: r.employees?.role,
+          employee_id: r.employee_id,
+          name: r.name,
+          role: r.role,
           date: new Date(r.time_in).toLocaleDateString(),
           time_in: new Date(r.time_in).toLocaleTimeString(),
           time_out: r.time_out ? new Date(r.time_out).toLocaleTimeString() : "Active",
@@ -299,11 +218,11 @@ router.get("/export", verifyToken, requireRole("admin"), async (req, res) => {
 
       const empStats = {};
       (rows || []).forEach(r => {
-        const empId = r.employees?.employee_id;
+        const empId = r.employee_id;
         if (!empStats[empId]) {
           empStats[empId] = { 
             employee_id: empId,
-            name: r.employees?.name, 
+            name: r.name, 
             days: 0, 
             hours: 0, 
             late: 0 
@@ -316,7 +235,7 @@ router.get("/export", verifyToken, requireRole("admin"), async (req, res) => {
         
         const timeIn = new Date(r.time_in);
         const cutoff = new Date(timeIn);
-        cutoff.setHours(8, 0, 0);
+        cutoff.setHours(8, 30, 0, 0);
         if (timeIn > cutoff) {
           empStats[empId].late++;
         }
@@ -347,12 +266,12 @@ router.get("/export", verifyToken, requireRole("admin"), async (req, res) => {
           Math.round((new Date(r.time_out) - new Date(r.time_in)) / 1000 / 60) : 0;
         const timeIn = new Date(r.time_in);
         const cutoff = new Date(timeIn);
-        cutoff.setHours(8, 0, 0);
+        cutoff.setHours(8, 30, 0, 0);
         const isLate = timeIn > cutoff;
         
         breakdownSheet.addRow({
           date: new Date(r.time_in).toLocaleDateString(),
-          name: r.employees?.name,
+          name: r.name,
           time_in: new Date(r.time_in).toLocaleTimeString(),
           time_out: r.time_out ? new Date(r.time_out).toLocaleTimeString() : "-",
           duration: `${duration} mins`,
