@@ -9,10 +9,16 @@ services:
         value: production
       - key: PORT
         value: 5000
-      - key: SUPABASE_URL
+      - key: DB_HOST
         sync: false
-      - key: SUPABASE_KEY
+      - key: DB_PORT
+        value: 3306
+      - key: DB_USER
         sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        value: spc_online_dtr
       - key: JWT_SECRET
         sync: false
       - key: CORS_ORIGIN
