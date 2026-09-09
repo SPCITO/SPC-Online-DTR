@@ -22,32 +22,29 @@ router.post("/login", async (req, res) => {
   }
 
   try {
-    // Fetch user with joined dtr_user data
-    const { data: userData, error: userError } = await db.supabase
-      .from('employees')
-      .select(`
-        *,
-        dtr_user (
-          fullname,
-          empid,
-          FK_dept
-        )
-      `)
-      .eq('username', username)
-      .single();
+    const [rows] = await db.promise().query(
+      `
+      SELECT
+          e.*,
+          d.fullname,
+          d.empid,
+          d.FK_dept
+      FROM employees e
+      LEFT JOIN dtr_user d
+          ON e.dtr_user_id = d.PK_user
+      WHERE e.username = ?
+      LIMIT 1
+      `,
+      [username]
+    );
 
-    if (userError || !userData) {
+    if (rows.length === 0) {
       return res.status(401).json({
         message: "User not found",
       });
     }
 
-    const user = {
-      ...userData,
-      fullname: userData.dtr_user?.fullname,
-      empid: userData.dtr_user?.empid,
-      FK_dept: userData.dtr_user?.FK_dept
-    };
+    const user = rows[0];
 
     const valid = await bcrypt.compare(password, user.password);
 
@@ -63,14 +60,14 @@ router.post("/login", async (req, res) => {
     const session_id = uuidv4();
 
     // Update active session
-    const { error: updateError } = await db.supabase
-      .from('employees')
-      .update({ active_session: session_id })
-      .eq('id', user.id);
-
-    if (updateError) {
-      console.error("Failed to update session:", updateError);
-    }
+    await db.promise().query(
+      `
+      UPDATE employees
+      SET active_session = ?
+      WHERE id = ?
+      `,
+      [session_id, user.id]
+    );
 
     const token = jwt.sign(
       {
@@ -81,6 +78,14 @@ router.post("/login", async (req, res) => {
       JWT_SECRET,
       { expiresIn: "1d" }
     );
+
+    console.log("LOGIN SUCCESS");
+    console.log({
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        session: session_id,
+    });
 
     logSecurityEvent({
       employee_id: user.empid,
@@ -132,36 +137,45 @@ router.post("/logout", (req, res) => {
 // ==========================
 router.get("/me", verifyToken, async (req, res) => {
   try {
-    const { data: userData, error } = await db.supabase
-      .from('employees')
-      .select(`
-        id,
-        username,
-        role,
-        dtr_user (
-          empid,
-          fullname,
-          FK_dept
-        )
-      `)
-      .eq('id', req.user.id)
-      .single();
+    const [rows] = await db.promise().query(
+      `
+      SELECT
+          e.id,
+          e.username,
+          e.role,
+          d.empid,
+          d.fullname,
+          d.FK_dept
+      FROM employees e
+      LEFT JOIN dtr_user d
+          ON e.dtr_user_id = d.PK_user
+      WHERE e.id = ?
+      LIMIT 1
+      `,
+      [req.user.id]
+    );
 
-    if (error || !userData) {
-      return res.status(404).json({ message: "User not found" });
+    if (rows.length === 0) {
+      return res.status(404).json({
+        message: "User not found",
+      });
     }
 
+    const user = rows[0];
+
     res.json({
-      employee_db_id: userData.id,
-      username: userData.username,
-      role: userData.role,
-      employee_id: userData.dtr_user?.empid,
-      name: userData.dtr_user?.fullname,
-      department_id: userData.dtr_user?.FK_dept,
+      employee_db_id: user.id,
+      username: user.username,
+      role: user.role,
+      employee_id: user.empid,
+      name: user.fullname,
+      department_id: user.FK_dept,
     });
   } catch (err) {
-    console.error("Get user error:", err);
-    return res.status(500).json({ message: "Server error" });
+    console.error("Fetch current user error:", err);
+    return res.status(500).json({
+      message: "Server error",
+    });
   }
 });
 
@@ -183,17 +197,14 @@ router.post("/change-password", verifyToken, async (req, res) => {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     // UPDATE PASSWORD
-    const { error } = await db.supabase
-      .from('employees')
-      .update({ password: hashedPassword })
-      .eq('id', userId);
-
-    if (error) {
-      console.error("Password update error:", error);
-      return res.status(500).json({
-        message: "Failed to update password",
-      });
-    }
+    await db.promise().query(
+      `
+      UPDATE employees
+      SET password = ?
+      WHERE id = ?
+      `,
+      [hashedPassword, userId]
+    );
 
     // CLEAR COOKIE AFTER PASSWORD CHANGE
     res.clearCookie("token", {
