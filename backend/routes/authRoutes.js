@@ -7,7 +7,10 @@ const { v4: uuidv4 } = require("uuid");
 const logSecurityEvent = require("../utils/securityLogger");
 const verifyToken = require("../middleware/authMiddleware");
 
-const JWT_SECRET = process.env.JWT_SECRET || "secret";
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is required");
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // ==========================
 // LOGIN
@@ -79,14 +82,6 @@ router.post("/login", async (req, res) => {
       { expiresIn: "1d" }
     );
 
-    console.log("LOGIN SUCCESS");
-    console.log({
-        id: user.id,
-        username: user.username,
-        role: user.role,
-        session: session_id,
-    });
-
     logSecurityEvent({
       employee_id: user.empid,
       action_type: "LOGIN",
@@ -120,7 +115,17 @@ router.post("/login", async (req, res) => {
 // ==========================
 // LOGOUT
 // ==========================
-router.post("/logout", (req, res) => {
+router.post("/logout", verifyToken, async (req, res) => {
+  try {
+    // Invalidate session in database
+    await db.promise().query(
+      "UPDATE employees SET active_session = NULL WHERE id = ?",
+      [req.user.id]
+    );
+  } catch (err) {
+    console.error("Logout session cleanup error:", err);
+  }
+
   res.clearCookie("token", {
     httpOnly: true,
     sameSite: "lax",

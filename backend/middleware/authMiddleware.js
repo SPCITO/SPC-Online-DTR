@@ -1,7 +1,10 @@
 const jwt = require("jsonwebtoken");
 const db = require("../config/db");
 
-const JWT_SECRET = process.env.JWT_SECRET || "secret";
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is required");
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const verifyToken = async (req, res, next) => {
   // Authorization: Bearer xxx
@@ -21,9 +24,6 @@ const verifyToken = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    console.log("VERIFY TOKEN");
-    console.log(decoded);
-
     const [rows] = await db.promise().query(
       `
       SELECT active_session
@@ -33,9 +33,6 @@ const verifyToken = async (req, res, next) => {
       `,
       [decoded.id]
     );
-
-    console.log("SESSION IN DATABASE");
-    console.log(rows);
 
     if (rows.length === 0) {
       return res.status(401).json({
