@@ -215,6 +215,9 @@ router.get("/me", verifyToken, async (req, res) => {
 
     const user = rows[0];
 
+    // Check if user still uses default password (for first-login redirect)
+    const isUsingDefaultPassword = await bcrypt.compare("SPC0", user.password);
+
     res.json({
       employee_db_id: user.id,
       username: user.username,
@@ -222,6 +225,7 @@ router.get("/me", verifyToken, async (req, res) => {
       employee_id: user.empid,
       name: user.fullname,
       department_id: user.FK_dept,
+      mustChangePassword: isUsingDefaultPassword,
     });
   } catch (err) {
     console.error("Fetch current user error:", err);

@@ -13,6 +13,9 @@ out/
 .env.local
 *.env.*
 
+# Generated credentials (security)
+generated_credentials.txt
+
 # Editors
 .vscode/
 .idea/

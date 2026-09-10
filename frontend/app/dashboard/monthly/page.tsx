@@ -38,13 +38,17 @@ export default function MonthlyDashboard() {
   const fetchMonthly = async () => {
     if (!user) return;
 
-    const res = await api.getMonthlyLogs(
-      user.employee_db_id,
-      currentDate.getFullYear(),
-      currentDate.getMonth() + 1
-    );
-
-    setData(res);
+    try {
+      const res = await api.getMonthlyLogs(
+        user.employee_db_id,
+        currentDate.getFullYear(),
+        currentDate.getMonth() + 1
+      );
+      setData(res);
+    } catch (err) {
+      console.error("Failed to fetch monthly data:", err);
+      setData(null);
+    }
   };
 
   useEffect(() => {
