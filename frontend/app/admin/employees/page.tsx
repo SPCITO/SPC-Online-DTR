@@ -187,7 +187,7 @@ export default function EmployeesPage() {
 
   // Calculate stats safely
   const totalLoaded = employees.length;
-  const activeCount = employees.filter(e => e.is_active === 1).length;
+  const activeCount = employees.filter(e => e.is_active === true).length;
   const adminCount = employees.filter(e => e.role === 'admin').length;
 
   if (authLoading || (loading && employees.length === 0)) {

@@ -30,7 +30,7 @@ export default function Dashboard() {
   //FIRST-LOGIN PASSWORD RESET CHECK 
   useEffect(() => {
     if (!authLoading && user) {
-      if (user.password_reset_required) {
+      if (user.mustChangePassword) {
         router.replace("/change-password");
       }
     }
@@ -257,7 +257,7 @@ export default function Dashboard() {
                 </h1>
 
                 <p className="text-gray-500 mt-2 text-sm font-medium">
-                  Employee ID: {user.id}
+                  Employee ID: {user.employee_db_id}
                 </p>
 
               </div>

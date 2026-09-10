@@ -57,9 +57,11 @@ const request = async (endpoint: string, options: any = {}) => {
     if (endpoint === "/login" && res.ok && data?.token) {
       saveToken(data.token);
       if (data.user) {
-        localStorage.setItem('user', JSON.stringify(data.user));
+        // Store mustChangePassword in user object for dashboard check
+        const userWithFlag = { ...data.user, mustChangePassword: data.mustChangePassword };
+        localStorage.setItem('user', JSON.stringify(userWithFlag));
       }
-      // Return data without token exposed to components if desired, or keep it
+      // Return data without token exposed to components
       const { token, ...rest } = data;
       return rest;
     }

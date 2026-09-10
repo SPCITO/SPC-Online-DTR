@@ -115,14 +115,22 @@ router.get("/export", verifyToken, requireRole("admin"), async (req, res) => {
       endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
     }
 
-    // 2. Fetch Data via MySQL JOIN
-    const [rows] = await db.promise().query(
-      `SELECT al.time_in, al.time_out, e.name, e.employee_id, e.role
-       FROM attendance_logs al
-       JOIN employees e ON al.employee_db_id = e.id
-       WHERE al.time_in >= ? AND al.time_in <= ?`,
-      [startDate, endDate]
-    );
+    // 2. Fetch Data via MySQL JOIN (with optional deptId filter)
+    let sql = `
+      SELECT al.time_in, al.time_out, e.name, e.employee_id, e.role, d.groupno
+      FROM attendance_logs al
+      JOIN employees e ON al.employee_db_id = e.id
+      LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
+      WHERE al.time_in >= ? AND al.time_in <= ?
+    `;
+    const queryParams = [startDate, endDate];
+
+    if (deptId) {
+      sql += ` AND d.groupno = ?`;
+      queryParams.push(parseInt(deptId));
+    }
+
+    const [rows] = await db.promise().query(sql, queryParams);
 
     // 3. Create Workbook
     const workbook = new ExcelJS.Workbook();

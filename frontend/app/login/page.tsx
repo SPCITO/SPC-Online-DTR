@@ -45,9 +45,8 @@ export default function LoginPage() {
       }
 
       // FIRST LOGIN FLOW
-      // if using default password SPC0
-      if (password === "SPC0") {
-        console.log("First login detected, redirecting to change-password");
+      // Use backend flag instead of client-side password check
+      if (loginRes.mustChangePassword) {
         router.replace("/change-password");
         return;
       }

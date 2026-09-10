@@ -6,6 +6,11 @@ const db = require("../config/db");
 router.get("/:employee_db_id/:year/:month", async (req, res) => {
   const { employee_db_id, year, month } = req.params;
 
+  // Ownership check: employees can only view their own monthly data
+  if (parseInt(employee_db_id) !== req.user.id && req.user.role !== "admin") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
   try {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);

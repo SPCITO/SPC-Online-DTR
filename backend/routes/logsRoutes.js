@@ -53,6 +53,11 @@ router.get("/", async (req, res) => {
 router.get("/me/:employee_db_id", async (req, res) => {
   const { employee_db_id } = req.params;
 
+  // Ownership check: employees can only view their own logs
+  if (parseInt(employee_db_id) !== req.user.id && req.user.role !== "admin") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
   try {
     const [rows] = await db.promise().query(
       `SELECT al.id, al.time_in, al.time_out, d.fullname, d.groupno
@@ -85,6 +90,11 @@ router.get("/me/:employee_db_id", async (req, res) => {
 // ==========================
 router.get("/monthly/:employee_id", async (req, res) => {
   const { employee_id } = req.params;
+
+  // Ownership check
+  if (parseInt(employee_id) !== req.user.id && req.user.role !== "admin") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
 
   try {
     const [rows] = await db.promise().query(
