@@ -70,10 +70,15 @@ export default function ChangePasswordPage() {
       setLoading(true);
 
       await api.changePassword({
+        currentPassword,
         newPassword,
       });
 
       toast.success("Password updated successfully");
+
+      // Clear stored auth data — session is now invalidated server-side
+      localStorage.removeItem("auth_token");
+      localStorage.removeItem("user");
 
       router.replace("/login");
     } catch (err: any) {

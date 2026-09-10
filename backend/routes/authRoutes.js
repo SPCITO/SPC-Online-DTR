@@ -203,33 +203,50 @@ router.get("/me", verifyToken, async (req, res) => {
 router.post("/change-password", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { newPassword } = req.body;
+    const { currentPassword, newPassword } = req.body;
 
-    if (!newPassword) {
+    // Validate inputs
+    if (!currentPassword || !newPassword) {
       return res.status(400).json({
-        message: "New password is required",
+        message: "Current password and new password are required",
       });
     }
 
-    // HASH NEW PASSWORD
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    // Server-side password length validation
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        message: "New password must be at least 6 characters",
+      });
+    }
 
-    // UPDATE PASSWORD
+    // Retrieve existing password hash
+    const [rows] = await db.promise().query(
+      "SELECT password FROM employees WHERE id = ?",
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Verify current password
+    const valid = await bcrypt.compare(currentPassword, rows[0].password);
+    if (!valid) {
+      return res.status(401).json({ message: "Current password is incorrect" });
+    }
+
+    // Hash and update new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
     await db.promise().query(
-      `
-      UPDATE employees
-      SET password = ?
-      WHERE id = ?
-      `,
+      "UPDATE employees SET password = ? WHERE id = ?",
       [hashedPassword, userId]
     );
 
-    // CLEAR COOKIE AFTER PASSWORD CHANGE
-    res.clearCookie("token", {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-    });
+    // Invalidate session — forces re-login with new password
+    await db.promise().query(
+      "UPDATE employees SET active_session = NULL WHERE id = ?",
+      [userId]
+    );
 
     return res.json({
       success: true,

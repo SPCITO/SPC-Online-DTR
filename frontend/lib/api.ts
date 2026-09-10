@@ -150,7 +150,7 @@ export const api = {
     return request(`/departments/export${params.toString() ? `?${params.toString()}` : ""}`);
   },
 
-  changePassword: (data: { newPassword: string }) =>
+  changePassword: (data: { currentPassword: string; newPassword: string }) =>
     request("/change-password", { method: "POST", body: JSON.stringify(data) }),
 
   getTime: () => request("/time"),
