@@ -37,7 +37,9 @@ export default function UserLogsPage() {
 
     try {
       const data = await api.getMyLogs(user.employee_db_id);
-      setLogs(Array.isArray(data) ? data : []);
+      // Backend now returns paginated response: { logs, total, page, limit, totalPages }
+      const logList = Array.isArray(data) ? data : (data?.logs || []);
+      setLogs(logList);
     } catch (err) {
       console.error("Logs fetch error:", err);
       setLogs([]);

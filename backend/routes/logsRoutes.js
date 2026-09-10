@@ -58,18 +58,30 @@ router.get("/me/:employee_db_id", async (req, res) => {
     return res.status(403).json({ message: "Forbidden" });
   }
 
+  // Pagination with safe defaults and limits
+  let page = Math.max(1, parseInt(req.query.page) || 1);
+  let limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+  const offset = (page - 1) * limit;
+
   try {
+    // Get total count
+    const [[{ total }]] = await db.promise().query(
+      "SELECT COUNT(*) AS total FROM attendance_logs WHERE employee_db_id = ?",
+      [employee_db_id]
+    );
+
     const [rows] = await db.promise().query(
       `SELECT al.id, al.time_in, al.time_out, d.fullname, d.groupno
        FROM attendance_logs al
        JOIN employees e ON al.employee_db_id = e.id
        LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
        WHERE al.employee_db_id = ?
-       ORDER BY al.time_in DESC`,
-      [employee_db_id]
+       ORDER BY al.time_in DESC, al.id DESC
+       LIMIT ? OFFSET ?`,
+      [employee_db_id, limit, offset]
     );
 
-    const transformed = (rows || []).map(log => ({
+    const logs = (rows || []).map(log => ({
       id: log.id,
       time_in: log.time_in,
       time_out: log.time_out,
@@ -77,7 +89,13 @@ router.get("/me/:employee_db_id", async (req, res) => {
       department_id: log.groupno
     }));
 
-    res.json(transformed);
+    res.json({
+      logs,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (err) {
     console.error("GET user logs error:", err);
     return res.status(500).json({ message: "Server error" });

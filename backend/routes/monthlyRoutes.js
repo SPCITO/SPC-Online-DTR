@@ -16,7 +16,7 @@ router.get("/:employee_db_id/:year/:month", async (req, res) => {
     const endDate = new Date(year, month, 0, 23, 59, 59);
 
     const [results] = await db.promise().query(
-      `SELECT * FROM attendance_logs
+      `SELECT id, time_in, time_out FROM attendance_logs
        WHERE employee_db_id = ?
        AND time_in >= ? AND time_in <= ?
        ORDER BY time_in ASC`,

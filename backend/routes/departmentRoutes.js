@@ -59,6 +59,21 @@ router.get("/:deptId/logs", verifyToken, async (req, res) => {
   try {
     const deptId = Number(req.params.deptId);
 
+    // Pagination with safe defaults and limits
+    let page = Math.max(1, parseInt(req.query.page) || 1);
+    let limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const offset = (page - 1) * limit;
+
+    // Get total count
+    const [[{ total }]] = await db.promise().query(
+      `SELECT COUNT(*) AS total
+       FROM attendance_logs al
+       JOIN employees e ON al.employee_db_id = e.id
+       LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
+       WHERE d.groupno = ?`,
+      [deptId]
+    );
+
     const [rows] = await db.promise().query(
       `SELECT al.id, al.employee_db_id, al.time_in, al.time_out,
               e.name, e.employee_id, e.role, d.groupno
@@ -66,8 +81,9 @@ router.get("/:deptId/logs", verifyToken, async (req, res) => {
        JOIN employees e ON al.employee_db_id = e.id
        LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
        WHERE d.groupno = ?
-       ORDER BY al.time_in DESC`,
-      [deptId]
+       ORDER BY al.time_in DESC, al.id DESC
+       LIMIT ? OFFSET ?`,
+      [deptId, limit, offset]
     );
 
     const logs = (rows || []).map(row => ({
@@ -81,7 +97,13 @@ router.get("/:deptId/logs", verifyToken, async (req, res) => {
       time_out: row.time_out,
     }));
 
-    res.json(logs);
+    res.json({
+      logs,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    });
 
   } catch (err) {
     console.error("GET dept logs error:", err);
