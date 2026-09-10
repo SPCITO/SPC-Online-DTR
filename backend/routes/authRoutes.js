@@ -48,6 +48,7 @@ router.post("/login", loginLimiter, async (req, res) => {
       LEFT JOIN dtr_user d
           ON e.dtr_user_id = d.PK_user
       WHERE e.username = ?
+      AND e.is_active = 1
       LIMIT 1
       `,
       [username]

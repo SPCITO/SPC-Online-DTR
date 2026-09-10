@@ -28,7 +28,7 @@ const verifyToken = async (req, res, next) => {
       `
       SELECT active_session
       FROM employees
-      WHERE id = ?
+      WHERE id = ? AND is_active = 1
       LIMIT 1
       `,
       [decoded.id]

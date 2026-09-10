@@ -61,6 +61,39 @@ const allowedOrigins = [
 	// DEPARTMENT ROUTES (PROTECTED)
 	const departmentRoutes = require("./routes/departmentRoutes");
 	app.use("/api/departments", departmentRoutes);
+
+	// ADMIN STATS (dedicated aggregate endpoint)
+	app.get("/api/admin/stats", verifyToken, requireRole("admin"), async (req, res) => {
+	  try {
+		const db = require("./config/db");
+		const now = new Date();
+		const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+		const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+		const [[{ todayLogs }]] = await db.promise().query(
+		  "SELECT COUNT(*) AS todayLogs FROM attendance_logs WHERE time_in >= ? AND time_in <= ?",
+		  [startOfDay, endOfDay]
+		);
+
+		const [[{ activeNow }]] = await db.promise().query(
+		  "SELECT COUNT(*) AS activeNow FROM attendance_logs WHERE time_in >= ? AND time_in <= ? AND time_out IS NULL",
+		  [startOfDay, endOfDay]
+		);
+
+		const [[{ totalEmployees }]] = await db.promise().query(
+		  "SELECT COUNT(*) AS totalEmployees FROM employees WHERE is_active = 1"
+		);
+
+		const [[{ totalLogs }]] = await db.promise().query(
+		  "SELECT COUNT(*) AS totalLogs FROM attendance_logs"
+		);
+
+		res.json({ todayLogs, activeNow, totalEmployees, totalLogs });
+	  } catch (err) {
+		console.error("Admin stats error:", err);
+		res.status(500).json({ message: "Failed to fetch stats" });
+	  }
+	});
 	
 	// TEST
 	app.get("/", (req, res) => {

@@ -110,6 +110,8 @@ export const api = {
     if (search) queryParams.append('search', search);
     return request(`/logs?${queryParams.toString()}`);
   },
+
+  getAdminStats: () => request("/admin/stats"),
   
   getMyLogs: (employee_db_id: number) => request(`/logs/me/${employee_db_id}`),
   

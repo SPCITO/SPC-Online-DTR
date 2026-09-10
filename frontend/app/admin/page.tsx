@@ -20,7 +20,7 @@ export default function AdminDashboard() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 
-  const [logs, setLogs] = useState<any[]>([]);
+  const [stats, setStats] = useState<{ todayLogs: number; activeNow: number; totalEmployees: number; totalLogs: number } | null>(null);
   const [loading, setLoading] = useState(true);
 
   // ✅ 1. ROLE GUARD
@@ -37,27 +37,21 @@ export default function AdminDashboard() {
     }
   }, [user, authLoading, router]);
 
-  // ✅ 2. FETCH DATA (For Stats Only)
+  // ✅ 2. FETCH STATS (dedicated aggregate endpoint)
   useEffect(() => {
-    const fetchLogs = async () => {
+    const fetchStats = async () => {
       try {
-        const data = await api.getLogs();
-        setLogs(Array.isArray(data) ? data : []);
+        const data = await api.getAdminStats();
+        setStats(data);
       } catch (err) {
-        console.error("Failed to fetch logs:", err);
+        console.error("Failed to fetch stats:", err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchLogs();
+    fetchStats();
   }, [router]);
-
-  const today = new Date().toDateString();
-  const todayLogs = logs.filter(
-    (l) => new Date(l.time_in).toDateString() === today
-  );
-  const activeUsers = todayLogs.filter((l) => !l.time_out);
 
   if (authLoading || loading) {
     return (
@@ -118,7 +112,7 @@ export default function AdminDashboard() {
               <div className="relative flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Active Now</p>
-                  <h2 className="mt-2 text-5xl font-black text-gray-900">{activeUsers.length}</h2>
+                  <h2 className="mt-2 text-5xl font-black text-gray-900">{stats?.activeNow ?? 0}</h2>
                   <p className="mt-2 text-sm text-green-600 font-medium flex items-center gap-1">
                     <Users size={14} /> Currently clocked in
                   </p>
@@ -138,7 +132,7 @@ export default function AdminDashboard() {
               <div className="relative flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Today's Activity</p>
-                  <h2 className="mt-2 text-5xl font-black text-gray-900">{todayLogs.length}</h2>
+                  <h2 className="mt-2 text-5xl font-black text-gray-900">{stats?.todayLogs ?? 0}</h2>
                   <p className="mt-2 text-sm text-blue-600 font-medium flex items-center gap-1">
                     <Activity size={14} /> Total scans
                   </p>
@@ -158,7 +152,7 @@ export default function AdminDashboard() {
               <div className="relative flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Total Records</p>
-                  <h2 className="mt-2 text-5xl font-black text-gray-900">{logs.length}</h2>
+                  <h2 className="mt-2 text-5xl font-black text-gray-900">{stats?.totalLogs ?? 0}</h2>
                   <p className="mt-2 text-sm text-purple-600 font-medium flex items-center gap-1">
                     <FileSpreadsheet size={14} /> Lifetime logs
                   </p>
