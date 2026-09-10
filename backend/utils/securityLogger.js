@@ -17,5 +17,3 @@ const logSecurityEvent = ({
 };
 
 module.exports = logSecurityEvent;
-
-module.exports = logSecurityEvent;

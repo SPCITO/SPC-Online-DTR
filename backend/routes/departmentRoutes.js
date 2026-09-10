@@ -128,6 +128,11 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
   try {
     const { deptId, dateRange, type } = req.query;
 
+    // Validate export type
+    if (!type || !['all', 'department'].includes(type)) {
+      return res.status(400).json({ message: "Invalid export type. Use 'all' or 'department'." });
+    }
+
     // 1. Calculate Date Range (without mutating `now`)
     const now = new Date();
     let startDate, endDate;

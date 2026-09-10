@@ -16,6 +16,7 @@ const pool = mysql.createPool({
   connectTimeout: 10000,
 
   charset: "utf8mb4",
+  timezone: "+08:00",
 });
 
 // Pool-level error handler — prevents unhandled error events

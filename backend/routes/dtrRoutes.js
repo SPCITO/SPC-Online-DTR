@@ -35,7 +35,6 @@ router.post("/time-in", dtrLimiter, async (req, res) => {
          WHERE employee_db_id = ?
          AND time_in >= ? AND time_in <= ?
          AND time_out IS NULL
-         LIMIT 1
        )`,
       [employee_db_id, now, employee_db_id, startOfDay, endOfDay]
     );

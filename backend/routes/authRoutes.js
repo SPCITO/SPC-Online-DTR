@@ -155,6 +155,15 @@ router.post("/login", loginLimiter, async (req, res) => {
 // ==========================
 router.post("/logout", verifyToken, async (req, res) => {
   try {
+    // Log the logout event
+    logSecurityEvent({
+      employee_id: req.user.id,
+      action_type: "LOGOUT",
+      ip_address: req.ip,
+      user_agent: req.headers["user-agent"],
+      session_id: req.user?.session_id,
+    });
+
     // Invalidate session in database
     await db.promise().query(
       "UPDATE employees SET active_session = NULL WHERE id = ?",
@@ -272,6 +281,15 @@ router.post("/change-password", verifyToken, changePasswordLimiter, async (req, 
       "UPDATE employees SET active_session = NULL WHERE id = ?",
       [userId]
     );
+
+    // Log the password change event
+    logSecurityEvent({
+      employee_id: req.user.id,
+      action_type: "PASSWORD_CHANGE",
+      ip_address: req.ip,
+      user_agent: req.headers["user-agent"],
+      session_id: req.user?.session_id,
+    });
 
     return res.json({
       success: true,

@@ -66,6 +66,12 @@ router.post("/", verifyToken, requireRole("admin"), async (req, res) => {
     email = email?.trim();
     role = role || 'employee';
 
+    // Validate role against supported values
+    const validRoles = ['admin', 'employee'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ message: "Invalid role. Supported roles: admin, employee" });
+    }
+
     if (!name || !employee_id || !email) {
       return res.status(400).json({ message: "Name, Employee ID, and Email are required." });
     }
@@ -107,6 +113,14 @@ router.put("/:id", verifyToken, requireRole("admin"), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, employee_id, email, role, is_active } = req.body;
+
+    // Validate role if provided
+    if (role !== undefined) {
+      const validRoles = ['admin', 'employee'];
+      if (!validRoles.includes(role)) {
+        return res.status(400).json({ message: "Invalid role. Supported roles: admin, employee" });
+      }
+    }
 
     // Check if employee exists
     const [existing] = await db.promise().query(

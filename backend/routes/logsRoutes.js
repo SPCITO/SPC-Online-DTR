@@ -27,7 +27,7 @@ router.get("/", requireRole("admin"), async (req, res) => {
       params.push(`%${search}%`, search);
     }
 
-    sql += ` ORDER BY al.time_in DESC LIMIT ? OFFSET ?`;
+    sql += ` ORDER BY al.time_in DESC, al.id DESC LIMIT ? OFFSET ?`;
     params.push(parseInt(limit), offset);
 
     const [rows] = await db.promise().query(sql, params);
