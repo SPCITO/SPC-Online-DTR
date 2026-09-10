@@ -23,24 +23,15 @@ export default function LoginPage() {
       setLoading(true);
       setError("");
 
-      console.log("Attempting login with username:", username);
-      
       // LOGIN
       const loginRes = await api.login({
         username,
         password,
       });
 
-      console.log("Login response:", loginRes);
-
-      // IMPORTANT:
-      // backend already returns user object
       const user = loginRes?.user;
 
-      console.log("User object from response:", user);
-
       if (!user) {
-        console.error("No user object in response");
         throw new Error("Failed to get user session");
       }
 
@@ -52,7 +43,6 @@ export default function LoginPage() {
       }
 
       // EVERYONE GOES TO DASHBOARD
-      console.log("Redirecting to dashboard");
       router.replace("/dashboard");
 
     } catch (err: any) {

@@ -149,8 +149,6 @@ export default function Dashboard() {
     try {
       setLoading(true);
 
-      console.log("USER OBJECT:", user);
-
       await api.timeIn(user.employee_db_id);
 
       toast.success("Time In successful");

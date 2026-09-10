@@ -33,16 +33,11 @@ const request = async (endpoint: string, options: any = {}) => {
     ...(options.headers || {}),
   };
 
-  console.log(`API Request: ${endpoint}`, `${API_URL}${endpoint}`);
-  
   try {
     const res = await fetch(`${API_URL}${endpoint}`, {
       ...options,
       headers,
-      // credentials: "include", // No longer needed for cookies
     });
-
-    console.log(`API Response status: ${res.status}`);
 
     let data;
     try {
@@ -50,8 +45,6 @@ const request = async (endpoint: string, options: any = {}) => {
     } catch {
       data = null;
     }
-
-    console.log(`API Response data:`, data);
 
     // ✅ SAVE TOKEN IF LOGIN SUCCESSFUL
     if (endpoint === "/login" && res.ok && data?.token) {

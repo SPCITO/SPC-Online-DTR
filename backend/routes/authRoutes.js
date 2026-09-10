@@ -4,6 +4,7 @@ const db = require("../config/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { v4: uuidv4 } = require("uuid");
+const rateLimit = require("express-rate-limit");
 const logSecurityEvent = require("../utils/securityLogger");
 const verifyToken = require("../middleware/authMiddleware");
 
@@ -12,10 +13,21 @@ if (!process.env.JWT_SECRET) {
 }
 const JWT_SECRET = process.env.JWT_SECRET;
 
+// Rate limiter for login: 10 attempts per 15 minutes per IP
+// Appropriate for a small internal DTR system — allows a few mistakes
+// but blocks sustained brute-force attempts.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  message: { message: "Too many login attempts. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ==========================
 // LOGIN
 // ==========================
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
@@ -43,7 +55,7 @@ router.post("/login", async (req, res) => {
 
     if (rows.length === 0) {
       return res.status(401).json({
-        message: "User not found",
+        message: "Invalid credentials",
       });
     }
 
@@ -53,7 +65,7 @@ router.post("/login", async (req, res) => {
 
     if (!valid) {
       return res.status(401).json({
-        message: "Wrong password",
+        message: "Invalid credentials",
       });
     }
 
