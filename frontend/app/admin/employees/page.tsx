@@ -29,7 +29,7 @@ interface Employee {
   employee_id: string | null;
   department_name?: string | null;
   role: string;
-  is_active: number; // 1 or 0
+  is_active: boolean;
   created_at: string;
 }
 
@@ -165,7 +165,7 @@ export default function EmployeesPage() {
     if (!confirm(`Are you sure you want to ${emp.is_active ? 'disable' : 'enable'} ${emp.name}?`)) return;
 
     try {
-      const newStatus = emp.is_active ? 0 : 1;
+      const newStatus = !emp.is_active;
       await api.updateEmployee(emp.id, { is_active: newStatus });
 
       setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, is_active: newStatus } : e));
@@ -390,8 +390,8 @@ export default function EmployeesPage() {
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-gray-500 uppercase">Status</label>
                     <div className="flex items-center gap-2 mt-2">
-                      <button type="button" onClick={() => setEditingEmployee({...editingEmployee, is_active: 1})} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${editingEmployee.is_active === 1 ? 'bg-green-600 text-white shadow-lg shadow-green-200' : 'bg-gray-100 text-gray-500'}`}>Active</button>
-                      <button type="button" onClick={() => setEditingEmployee({...editingEmployee, is_active: 0})} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${editingEmployee.is_active === 0 ? 'bg-red-600 text-white shadow-lg shadow-red-200' : 'bg-gray-100 text-gray-500'}`}>Disabled</button>
+                      <button type="button" onClick={() => setEditingEmployee({...editingEmployee, is_active: true})} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${editingEmployee.is_active === true ? 'bg-green-600 text-white shadow-lg shadow-green-200' : 'bg-gray-100 text-gray-500'}`}>Active</button>
+                      <button type="button" onClick={() => setEditingEmployee({...editingEmployee, is_active: false})} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${editingEmployee.is_active === false ? 'bg-red-600 text-white shadow-lg shadow-red-200' : 'bg-gray-100 text-gray-500'}`}>Disabled</button>
                     </div>
                   </div>
                 </div>
