@@ -4,6 +4,9 @@ const cookieParser = require("cookie-parser");
 
 const app = express();
 
+// Trust proxy for Render — req.ip returns real client IP, rate limiters work per-IP
+app.set("trust proxy", 1);
+
 // middleware
 const allowedOrigins = [
   "https://dtr.sanpablocolleges.edu.ph",

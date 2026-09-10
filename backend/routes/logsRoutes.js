@@ -1,11 +1,12 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
+const requireRole = require("../middleware/requireRole");
 
 // ==========================
-// GET ALL LOGS (ADMIN)
+// GET ALL LOGS (ADMIN ONLY)
 // ==========================
-router.get("/", async (req, res) => {
+router.get("/", requireRole("admin"), async (req, res) => {
   let page = Math.max(1, parseInt(req.query.page) || 1);
   let limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
   const search = req.query.search || "";

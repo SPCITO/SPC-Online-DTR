@@ -36,7 +36,7 @@ router.get("/", verifyToken, (req, res) => {
 // NOTE: This route MUST be before /:deptId/logs
 // to prevent Express matching "summary" as a deptId.
 // =====================================
-router.get("/summary", verifyToken, async (req, res) => {
+router.get("/summary", verifyToken, requireRole("admin"), async (req, res) => {
   try {
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -65,7 +65,7 @@ router.get("/summary", verifyToken, async (req, res) => {
 // =====================================
 // GET EMPLOYEES BY DEPARTMENT
 // =====================================
-router.get("/:deptId/logs", verifyToken, async (req, res) => {
+router.get("/:deptId/logs", verifyToken, requireRole("admin"), async (req, res) => {
   try {
     const deptId = Number(req.params.deptId);
 
