@@ -24,6 +24,15 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Rate limiter for password change: 5 attempts per 15 minutes per IP
+const changePasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { message: "Too many password change attempts. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ==========================
 // LOGIN
 // ==========================
@@ -55,6 +64,14 @@ router.post("/login", loginLimiter, async (req, res) => {
     );
 
     if (rows.length === 0) {
+      // Log failed login attempt (user not found)
+      logSecurityEvent({
+        employee_id: username,
+        action_type: "LOGIN_FAILED",
+        ip_address: req.ip,
+        user_agent: req.headers["user-agent"],
+        session_id: null,
+      });
       return res.status(401).json({
         message: "Invalid credentials",
       });
@@ -65,6 +82,14 @@ router.post("/login", loginLimiter, async (req, res) => {
     const valid = await bcrypt.compare(password, user.password);
 
     if (!valid) {
+      // Log failed login attempt (wrong password)
+      logSecurityEvent({
+        employee_id: user.empid || username,
+        action_type: "LOGIN_FAILED",
+        ip_address: req.ip,
+        user_agent: req.headers["user-agent"],
+        session_id: null,
+      });
       return res.status(401).json({
         message: "Invalid credentials",
       });
@@ -200,7 +225,7 @@ router.get("/me", verifyToken, async (req, res) => {
 // ==========================
 // CHANGE PASSWORD
 // ==========================
-router.post("/change-password", verifyToken, async (req, res) => {
+router.post("/change-password", verifyToken, changePasswordLimiter, async (req, res) => {
   try {
     const userId = req.user.id;
     const { currentPassword, newPassword } = req.body;

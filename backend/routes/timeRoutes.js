@@ -12,10 +12,13 @@ const db = require("../config/db");
 // =====================================
 router.get("/status/:employee_db_id", async (req, res) => {
 
-  const { employee_db_id } = req.params;
+  const empId = parseInt(req.params.employee_db_id);
+  if (isNaN(empId) || empId <= 0) {
+    return res.status(400).json({ message: "Invalid employee ID" });
+  }
 
   // Ownership check: employees can only check their own status
-  if (parseInt(employee_db_id) !== req.user.id && req.user.role !== "admin") {
+  if (empId !== req.user.id && req.user.role !== "admin") {
     return res.status(403).json({ message: "Forbidden" });
   }
 
@@ -33,7 +36,7 @@ router.get("/status/:employee_db_id", async (req, res) => {
       ORDER BY time_in DESC
       LIMIT 1
       `,
-      [employee_db_id]
+      [empId]
     );
 
     if (!rows.length) {

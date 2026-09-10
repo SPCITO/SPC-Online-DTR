@@ -12,9 +12,15 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   maxIdle: 10,
   idleTimeout: 60000,
-  queueLimit: 0,
+  queueLimit: 50,
+  connectTimeout: 10000,
 
   charset: "utf8mb4",
+});
+
+// Pool-level error handler — prevents unhandled error events
+pool.on("error", (err) => {
+  console.error("MySQL pool error:", err.code || err.message);
 });
 
 pool.getConnection((err, connection) => {

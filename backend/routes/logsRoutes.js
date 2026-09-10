@@ -6,8 +6,10 @@ const db = require("../config/db");
 // GET ALL LOGS (ADMIN)
 // ==========================
 router.get("/", async (req, res) => {
-  const { page = 1, limit = 10, search = "" } = req.query;
-  const offset = (page - 1) * parseInt(limit);
+  let page = Math.max(1, parseInt(req.query.page) || 1);
+  let limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+  const search = req.query.search || "";
+  const offset = (page - 1) * limit;
 
   try {
     let sql = `

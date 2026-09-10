@@ -6,10 +6,13 @@ const app = express();
 
 // middleware
 const allowedOrigins = [
-  "http://localhost:3000",
   "https://dtr.sanpablocolleges.edu.ph",
   "https://spc-online-dtr.vercel.app"
-  ];
+];
+// Allow localhost only in development
+if (process.env.NODE_ENV !== "production") {
+  allowedOrigins.push("http://localhost:3000");
+}
   	const corsOptions = {
 	  origin: function (origin, callback) {
 	    // Allow requests with no origin (like mobile apps or curl requests)
@@ -24,6 +27,7 @@ const allowedOrigins = [
 	  },	  credentials: true,
 	  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 	  allowedHeaders: ["Content-Type", "Authorization"],
+	  maxAge: 600,
 	};
 	
 	app.use(cors(corsOptions));
@@ -31,7 +35,7 @@ const allowedOrigins = [
 	// Explicitly handle OPTIONS preflight requests for all routes
 	app.options(/.*/, cors(corsOptions));
 	
-	app.use(express.json());
+	app.use(express.json({ limit: "1mb" }));
 	app.use(cookieParser());
 	
 	// 🔐 AUTH MIDDLEWARE
@@ -110,6 +114,45 @@ const allowedOrigins = [
   });
 	
 	const PORT = process.env.PORT || 5000;
-	app.listen(PORT, () => {
+	const server = app.listen(PORT, () => {
 	  console.log(`Server running on port ${PORT}`);
-});
+	});
+
+	// ========== GRACEFUL SHUTDOWN ==========
+	let isShuttingDown = false;
+
+	function shutdown(signal) {
+	  if (isShuttingDown) return;
+	  isShuttingDown = true;
+	  console.log(`${signal} received. Shutting down gracefully...`);
+
+	  // Stop accepting new connections
+	  server.close(() => {
+	    console.log("HTTP server closed.");
+	    // Close database pool
+		const db = require("./config/db");
+	    db.pool.end(() => {
+	      console.log("Database pool closed.");
+	      process.exit(0);
+	    });
+	  });
+
+	  // Force exit after 10 seconds if graceful shutdown hangs
+	  setTimeout(() => {
+	  console.error("Forced exit after timeout.");
+	  process.exit(1);
+	  }, 10000);
+	}
+
+	process.on("SIGTERM", () => shutdown("SIGTERM"));
+	process.on("SIGINT", () => shutdown("SIGINT"));
+
+	process.on("uncaughtException", (err) => {
+	  console.error("UNCAUGHT EXCEPTION:", err);
+	  shutdown("uncaughtException");
+	});
+
+	process.on("unhandledRejection", (reason) => {
+	  console.error("UNHANDLED REJECTION:", reason);
+	  // Log but don't crash — let the process continue for non-fatal rejections
+	});

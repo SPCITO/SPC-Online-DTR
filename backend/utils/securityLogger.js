@@ -8,25 +8,14 @@ const logSecurityEvent = ({
   session_id,
 }) => {
   db.query(
-    `
-      INSERT INTO security_logs
-      (
-        employee_id,
-        action_type,
-        ip_address,
-        user_agent,
-        session_id
-      )
-      VALUES (?, ?, ?, ?, ?)
-    `,
-    [
-      employee_id,
-      action_type,
-      ip_address,
-      user_agent,
-      session_id,
-    ]
-  );
+    `INSERT INTO security_logs (employee_id, action_type, ip_address, user_agent, session_id)
+     VALUES (?, ?, ?, ?, ?)`,
+    [employee_id, action_type, ip_address, user_agent, session_id]
+  ).catch((err) => {
+    console.error("Security log write failed:", err.code || err.message);
+  });
 };
+
+module.exports = logSecurityEvent;
 
 module.exports = logSecurityEvent;

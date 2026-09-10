@@ -11,8 +11,8 @@ const requireRole = require("../middleware/requireRole");
 // ==========================
 router.get("/", verifyToken, requireRole("admin"), async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    let page = Math.max(1, parseInt(req.query.page) || 1);
+    let limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
     const search = req.query.search || '';
     const offset = (page - 1) * limit;
 
@@ -51,7 +51,7 @@ router.get("/", verifyToken, requireRole("admin"), async (req, res) => {
 
   } catch (err) {
     console.error("GET employees error:", err);
-    return res.status(500).json({ message: "Failed to fetch employees", error: err.message });
+    return res.status(500).json({ message: "Failed to fetch employees" });
   }
 });
 
@@ -96,7 +96,7 @@ router.post("/", verifyToken, requireRole("admin"), async (req, res) => {
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ message: "Employee ID or Email already exists" });
     }
-    return res.status(500).json({ message: "Error creating employee", error: error.message });
+    return res.status(500).json({ message: "Error creating employee" });
   }
 });
 
@@ -167,7 +167,7 @@ router.put("/:id", verifyToken, requireRole("admin"), async (req, res) => {
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ message: "Employee ID or Email already exists" });
     }
-    return res.status(500).json({ message: "Error updating employee", error: error.message });
+    return res.status(500).json({ message: "Error updating employee" });
   }
 });
 
@@ -191,7 +191,7 @@ router.delete("/:id", verifyToken, requireRole("admin"), async (req, res) => {
 
   } catch (error) {
     console.error("DELETE employee error:", error);
-    return res.status(500).json({ message: "Error deleting employee", error: error.message });
+    return res.status(500).json({ message: "Error deleting employee" });
   }
 });
 

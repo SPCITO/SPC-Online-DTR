@@ -2,10 +2,20 @@ const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
 const ExcelJS = require("exceljs");
+const rateLimit = require("express-rate-limit");
 
 const verifyToken = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole"); 
 const { getAllDepartments } = require("../utils/deptMapping");
+
+// Rate limiter for exports: 10 per hour per IP
+const exportLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { message: "Too many export requests. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // =====================================
 // GET ALL DEPARTMENTS
@@ -114,7 +124,7 @@ router.get("/:deptId/logs", verifyToken, async (req, res) => {
 // ==========================
 // 📊 ADVANCED EXPORT LOGS
 // ==========================
-router.get("/export", verifyToken, requireRole("admin"), async (req, res) => {
+router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (req, res) => {
   try {
     const { deptId, dateRange, type } = req.query;
 
@@ -152,7 +162,15 @@ router.get("/export", verifyToken, requireRole("admin"), async (req, res) => {
       queryParams.push(parseInt(deptId));
     }
 
+    // Safety limit: cap at 10,000 rows to prevent memory exhaustion
+    sql += ` ORDER BY al.time_in DESC LIMIT 10001`;
     const [rows] = await db.promise().query(sql, queryParams);
+
+    if (rows.length > 10000) {
+      return res.status(400).json({
+        message: "Export is too large. Please narrow the date range or select a specific department.",
+      });
+    }
 
     // 3. Create Workbook
     const workbook = new ExcelJS.Workbook();
@@ -325,7 +343,7 @@ router.get("/export", verifyToken, requireRole("admin"), async (req, res) => {
 
   } catch (error) {
     console.error("Export error:", error);
-    res.status(500).json({ message: "Failed to generate report", error: error.message });
+    res.status(500).json({ message: "Failed to generate report" });
   }
 });
 

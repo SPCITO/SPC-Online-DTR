@@ -6,14 +6,28 @@ const db = require("../config/db");
 router.get("/:employee_db_id/:year/:month", async (req, res) => {
   const { employee_db_id, year, month } = req.params;
 
+  // Validate numeric params
+  const empId = parseInt(employee_db_id);
+  const yr = parseInt(year);
+  const mo = parseInt(month);
+  if (isNaN(empId) || empId <= 0) {
+    return res.status(400).json({ message: "Invalid employee ID" });
+  }
+  if (isNaN(yr) || yr < 2000 || yr > 2100) {
+    return res.status(400).json({ message: "Invalid year" });
+  }
+  if (isNaN(mo) || mo < 1 || mo > 12) {
+    return res.status(400).json({ message: "Invalid month" });
+  }
+
   // Ownership check: employees can only view their own monthly data
-  if (parseInt(employee_db_id) !== req.user.id && req.user.role !== "admin") {
+  if (empId !== req.user.id && req.user.role !== "admin") {
     return res.status(403).json({ message: "Forbidden" });
   }
 
   try {
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59);
+    const startDate = new Date(yr, mo - 1, 1);
+    const endDate = new Date(yr, mo, 0, 23, 59, 59);
 
     const [results] = await db.promise().query(
       `SELECT id, time_in, time_out FROM attendance_logs
@@ -82,7 +96,7 @@ router.get("/:employee_db_id/:year/:month", async (req, res) => {
     });
   } catch (err) {
     console.error("GET monthly logs error:", err);
-    return res.status(500).json({ message: "Error", error: err.message });
+    return res.status(500).json({ message: "Failed to fetch monthly report" });
   }
 });
 
