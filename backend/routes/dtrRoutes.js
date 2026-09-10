@@ -23,40 +23,65 @@ router.post("/time-in", dtrLimiter, async (req, res) => {
   const now = new Date();
 
   try {
-    // Atomic duplicate prevention: INSERT only succeeds if no open record exists today
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
-    const [result] = await db.promise().query(
-      `INSERT INTO attendance_logs (employee_db_id, time_in)
-       SELECT ?, ? FROM DUAL
-       WHERE NOT EXISTS (
-         SELECT 1 FROM attendance_logs
+    // Use explicit transaction with SELECT...FOR UPDATE to prevent race conditions.
+    // The FOR UPDATE acquires an exclusive lock on matching rows (or gap),
+    // serializing concurrent time-in requests for the same employee on the same day.
+    const conn = await db.pool.promise().getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // Lock the gap where an open record would exist
+      const [existing] = await conn.query(
+        `SELECT id FROM attendance_logs
          WHERE employee_db_id = ?
          AND time_in >= ? AND time_in <= ?
          AND time_out IS NULL
-       )`,
-      [employee_db_id, now, employee_db_id, startOfDay, endOfDay]
-    );
+         FOR UPDATE`,
+        [employee_db_id, startOfDay, endOfDay]
+      );
 
-    if (result.affectedRows === 0) {
-      return res.status(409).json({
-        message: "Already timed in today. Please time out first.",
+      if (existing.length > 0) {
+        await conn.rollback();
+        conn.release();
+        return res.status(409).json({
+          message: "Already timed in today. Please time out first.",
+        });
+      }
+
+      // No open record — safe to insert
+      const [result] = await conn.query(
+        `INSERT INTO attendance_logs (employee_db_id, time_in) VALUES (?, ?)`,
+        [employee_db_id, now]
+      );
+
+      await conn.commit();
+      conn.release();
+
+      if (result.affectedRows === 0) {
+        return res.status(500).json({ message: "Time In failed" });
+      }
+
+      logSecurityEvent({
+        employee_id: employee_db_id,
+        action_type: "TIME_IN",
+        ip_address: req.ip,
+        user_agent: req.headers["user-agent"],
+        session_id: req.user?.session_id,
       });
+
+      res.json({
+        message: "Time In recorded",
+        time: now,
+      });
+    } catch (txErr) {
+      // Transaction failed — rollback and release connection
+      try { await conn.rollback(); } catch (_) {}
+      conn.release();
+      throw txErr;
     }
-
-    logSecurityEvent({
-      employee_id: employee_db_id,
-      action_type: "TIME_IN",
-      ip_address: req.ip,
-      user_agent: req.headers["user-agent"],
-      session_id: req.user?.session_id,
-    });
-
-    res.json({
-      message: "Time In recorded",
-      time: now,
-    });
   } catch (err) {
     console.error("TIME IN ERROR:", err);
     return res.status(500).json({
