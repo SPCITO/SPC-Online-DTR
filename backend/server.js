@@ -1,27 +1,20 @@
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
+const { ALLOWED_ORIGINS } = require("./config/origins");
+const { csrfProtection, originCheck } = require("./middleware/csrfProtection");
 
 const app = express();
 
 // Trust proxy for Render — req.ip returns real client IP, rate limiters work per-IP
 app.set("trust proxy", 1);
 
-// middleware
-const allowedOrigins = [
-  "https://dtr.sanpablocolleges.edu.ph",
-  "https://spc-online-dtr.vercel.app"
-];
-// Allow localhost only in development
-if (process.env.NODE_ENV !== "production") {
-  allowedOrigins.push("http://localhost:3000");
-}
-  	const corsOptions = {
+	const corsOptions = {
 	  origin: function (origin, callback) {
 	    // Allow requests with no origin (like mobile apps or curl requests)
 	    if (!origin) return callback(null, true);
 	    
-	    if (allowedOrigins.indexOf(origin) !== -1) {
+	    if (ALLOWED_ORIGINS.indexOf(origin) !== -1) {
 	      callback(null, true);
 	    } else {
 	      console.log(`Blocked CORS request from origin: ${origin}`);
@@ -29,7 +22,7 @@ if (process.env.NODE_ENV !== "production") {
 	    }
 	  },	  credentials: true,
 	  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-	  allowedHeaders: ["Content-Type", "Authorization"],
+	  allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-Token"],
 	  maxAge: 600,
 	};
 	
@@ -40,7 +33,11 @@ if (process.env.NODE_ENV !== "production") {
 	
 	app.use(express.json({ limit: "1mb" }));
 	app.use(cookieParser());
-	
+
+	// Security middleware (after cookieParser, before routes)
+	app.use(originCheck);
+	app.use(csrfProtection);
+
 	// 🔐 AUTH MIDDLEWARE
 	const verifyToken = require("./middleware/authMiddleware");
 	const requireRole = require("./middleware/requireRole");

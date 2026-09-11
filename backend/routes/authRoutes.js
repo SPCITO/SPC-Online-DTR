@@ -13,6 +13,25 @@ if (!process.env.JWT_SECRET) {
 }
 const JWT_SECRET = process.env.JWT_SECRET;
 
+// Cookie configuration — centralized for consistency
+const isProd = process.env.NODE_ENV === "production";
+
+const AUTH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: isProd,
+  sameSite: isProd ? "none" : "lax",
+  maxAge: 86400000, // 24 hours — matches JWT expiry
+  path: "/",
+};
+
+const CSRF_COOKIE_OPTIONS = {
+  httpOnly: false, // JS must read this for header submission
+  secure: isProd,
+  sameSite: isProd ? "none" : "lax",
+  maxAge: 86400000,
+  path: "/",
+};
+
 // Rate limiter for login: 10 attempts per 15 minutes per IP
 // Appropriate for a small internal DTR system — allows a few mistakes
 // but blocks sustained brute-force attempts.
@@ -128,10 +147,19 @@ router.post("/login", loginLimiter, async (req, res) => {
       session_id,
     });
 
+    // Generate CSRF token for this session
+    const csrfToken = uuidv4();
+
+    // Set HttpOnly JWT cookie
+    res.cookie("token", token, AUTH_COOKIE_OPTIONS);
+
+    // Set CSRF cookie (non-HttpOnly — frontend reads this)
+    res.cookie("csrf_token", csrfToken, CSRF_COOKIE_OPTIONS);
+
     res.json({
       success: true,
       mustChangePassword: isUsingDefaultPassword,
-      token: token, 
+      csrfToken,
       user: {
         id: user.id,
         employee_db_id: user.id,
@@ -173,11 +201,9 @@ router.post("/logout", verifyToken, async (req, res) => {
     console.error("Logout session cleanup error:", err);
   }
 
-  res.clearCookie("token", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-  });
+  // Clear auth cookies
+  res.clearCookie("token", AUTH_COOKIE_OPTIONS);
+  res.clearCookie("csrf_token", CSRF_COOKIE_OPTIONS);
 
   res.json({
     message: "Logged out",
@@ -296,6 +322,10 @@ router.post("/change-password", verifyToken, changePasswordLimiter, async (req, 
       session_id: req.user?.session_id,
     });
 
+    // Clear auth cookies — force re-login with new password
+    res.clearCookie("token", AUTH_COOKIE_OPTIONS);
+    res.clearCookie("csrf_token", CSRF_COOKIE_OPTIONS);
+
     return res.json({
       success: true,
       message: "Password changed successfully",
@@ -306,6 +336,21 @@ router.post("/change-password", verifyToken, changePasswordLimiter, async (req, 
       message: "Server error",
     });
   }
+});
+
+// ==========================
+// CSRF TOKEN
+// Returns existing CSRF token if cookie exists, generates new one if not.
+// Does NOT rotate existing tokens (safe for multi-tab usage).
+// ==========================
+router.get("/auth/csrf", verifyToken, (req, res) => {
+  const existing = req.cookies?.csrf_token;
+  if (existing) {
+    return res.json({ csrfToken: existing });
+  }
+  const csrfToken = uuidv4();
+  res.cookie("csrf_token", csrfToken, CSRF_COOKIE_OPTIONS);
+  res.json({ csrfToken });
 });
 
 module.exports = router;
