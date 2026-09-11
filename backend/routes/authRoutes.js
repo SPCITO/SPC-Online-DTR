@@ -32,24 +32,24 @@ const CSRF_COOKIE_OPTIONS = {
   path: "/",
 };
 
-// Rate limiter for login: 10 attempts per 15 minutes per IP
-// Appropriate for a small internal DTR system — allows a few mistakes
-// but blocks sustained brute-force attempts.
+// Rate limiter for login: 20 attempts per 15 minutes per IP
+// IP-based because user is not yet authenticated at login time.
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,
+  windowMs: 15 * 60 * 1000,
+  max: 20,
   message: { message: "Too many login attempts. Please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// Rate limiter for password change: 5 attempts per 15 minutes per IP
+// Rate limiter for password change: 5 attempts per 15 minutes per authenticated user
 const changePasswordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
   message: { message: "Too many password change attempts. Please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => req.user.id.toString(),
 });
 
 // ==========================

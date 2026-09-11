@@ -8,13 +8,14 @@ const verifyToken = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole"); 
 const { getAllDepartments } = require("../utils/deptMapping");
 
-// Rate limiter for exports: 10 per hour per IP
+// Rate limiter for exports: 10 per hour per authenticated user
 const exportLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,
   message: { message: "Too many export requests. Please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => req.user.id.toString(),
 });
 
 // =====================================

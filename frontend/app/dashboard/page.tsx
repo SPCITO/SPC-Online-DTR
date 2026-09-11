@@ -56,14 +56,23 @@ function DashboardContent() {
     router.replace("/login");
   };
 
-  // REAL-TIME CLOCK
+  // REAL-TIME CLOCK — sync with server once, then tick locally
   useEffect(() => {
-    const updateClock = async () => {
+    let serverOffset = 0;
+    let tickInterval: ReturnType<typeof setInterval> | null = null;
+
+    const syncAndTick = async () => {
       try {
         const res = await api.getTime();
+        const serverTime = new Date(res.time).getTime();
+        serverOffset = serverTime - Date.now();
+      } catch {
+        // If sync fails, use local time (offset = 0)
+        serverOffset = 0;
+      }
 
-        const now = new Date(res.time);
-
+      const updateDisplay = () => {
+        const now = new Date(Date.now() + serverOffset);
         setCurrentTime(
           now.toLocaleTimeString([], {
             hour: "2-digit",
@@ -71,7 +80,6 @@ function DashboardContent() {
             second: "2-digit",
           })
         );
-
         setCurrentDate(
           now.toLocaleDateString([], {
             weekday: "long",
@@ -80,14 +88,18 @@ function DashboardContent() {
             year: "numeric",
           })
         );
-      } catch {}
+      };
+
+      // Update immediately, then every second locally (no network request)
+      updateDisplay();
+      tickInterval = setInterval(updateDisplay, 1000);
     };
 
-    updateClock();
+    syncAndTick();
 
-    const interval = setInterval(updateClock, 1000);
-
-    return () => clearInterval(interval);
+    return () => {
+      if (tickInterval) clearInterval(tickInterval);
+    };
   }, []);
 
   // STATUS CHECK
@@ -111,7 +123,7 @@ function DashboardContent() {
     const loop = async () => {
       while (active) {
         await checkStatus();
-        await new Promise((r) => setTimeout(r, 3000));
+        await new Promise((r) => setTimeout(r, 30000));
       }
     };
 

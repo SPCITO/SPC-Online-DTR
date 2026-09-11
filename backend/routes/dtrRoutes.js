@@ -5,14 +5,15 @@ const rateLimit = require("express-rate-limit");
 
 const logSecurityEvent = require("../utils/securityLogger");
 
-// Rate limiter for DTR: 30 requests per hour per IP
-// Allows normal use (2-4 time-in/out per day) plus some retries for mobile networks
+// Rate limiter for DTR: 10 requests per hour per authenticated user
+// Keyed by user ID, not IP — safe for shared school Wi-Fi
 const dtrLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 30,
+  windowMs: 60 * 60 * 1000,
+  max: 10,
   message: { message: "Too many requests. Please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => req.user.id.toString(),
 });
 
 // ==========================
