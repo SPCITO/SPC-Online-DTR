@@ -203,9 +203,9 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
         stats["All Staff"].durations.push(duration);
         
         const timeIn = new Date(r.time_in);
-        const cutoff = new Date(timeIn);
-        cutoff.setHours(8, 30, 0, 0);
-        if (timeIn > cutoff) {
+        const phtHour = (timeIn.getUTCHours() + 8) % 24;
+        const phtMinute = timeIn.getUTCMinutes();
+        if (phtHour > 8 || (phtHour === 8 && phtMinute > 30)) {
           stats["All Staff"].late++;
         }
       });
@@ -235,9 +235,9 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
         const duration = r.time_out ? 
           Math.round((new Date(r.time_out) - new Date(r.time_in)) / 1000 / 60) : 0;
         const timeIn = new Date(r.time_in);
-        const cutoff = new Date(timeIn);
-        cutoff.setHours(8, 30, 0, 0);
-        const isLate = timeIn > cutoff;
+        const phtHour = (timeIn.getUTCHours() + 8) % 24;
+        const phtMinute = timeIn.getUTCMinutes();
+        const isLate = phtHour > 8 || (phtHour === 8 && phtMinute > 30);
         
         detailSheet.addRow({
           employee_id: r.employee_id,
@@ -288,9 +288,9 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
         empStats[empId].hours += duration;
         
         const timeIn = new Date(r.time_in);
-        const cutoff = new Date(timeIn);
-        cutoff.setHours(8, 30, 0, 0);
-        if (timeIn > cutoff) {
+        const phtHour = (timeIn.getUTCHours() + 8) % 24;
+        const phtMinute = timeIn.getUTCMinutes();
+        if (phtHour > 8 || (phtHour === 8 && phtMinute > 30)) {
           empStats[empId].late++;
         }
       });
@@ -319,9 +319,9 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
         const duration = r.time_out ? 
           Math.round((new Date(r.time_out) - new Date(r.time_in)) / 1000 / 60) : 0;
         const timeIn = new Date(r.time_in);
-        const cutoff = new Date(timeIn);
-        cutoff.setHours(8, 30, 0, 0);
-        const isLate = timeIn > cutoff;
+        const phtHour = (timeIn.getUTCHours() + 8) % 24;
+        const phtMinute = timeIn.getUTCMinutes();
+        const isLate = phtHour > 8 || (phtHour === 8 && phtMinute > 30);
         
         breakdownSheet.addRow({
           date: new Date(r.time_in).toLocaleDateString(),

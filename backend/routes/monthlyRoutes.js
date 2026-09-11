@@ -64,11 +64,11 @@ router.get("/:employee_db_id/:year/:month", async (req, res) => {
         (new Date(d.last_out) - new Date(d.first_in)) /
         (1000 * 60 * 60);
 
-      // Late detection: 8:30 AM cutoff
-      const inTime = new Date(d.first_in);
-      const cutoff = new Date(d.first_in);
-      cutoff.setHours(8, 30, 0, 0);
-      const isLate = inTime > cutoff;
+      // Late detection: 8:30 AM cutoff (PHT = UTC+8)
+      // mysql2 stores PHT times as UTC offsets, so extract PHT hours from UTC
+      const phtHour = (new Date(d.first_in).getUTCHours() + 8) % 24;
+      const phtMinute = new Date(d.first_in).getUTCMinutes();
+      const isLate = phtHour > 8 || (phtHour === 8 && phtMinute > 30);
 
       return {
         date: d.date,
