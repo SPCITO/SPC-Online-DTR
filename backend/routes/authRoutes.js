@@ -195,6 +195,7 @@ router.get("/me", verifyToken, async (req, res) => {
           e.id,
           e.username,
           e.role,
+          e.password,
           d.empid,
           d.fullname,
           d.FK_dept
