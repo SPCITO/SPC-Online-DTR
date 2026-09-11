@@ -1,5 +1,11 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://spc-dtr-backend.onrender.com/api";
 
+// One-time cleanup: remove old localStorage auth data from pre-cookie migration
+if (typeof window !== "undefined") {
+  localStorage.removeItem("auth_token");
+  localStorage.removeItem("user");
+}
+
 // CSRF token stored in memory only — never in localStorage
 let csrfToken: string | null = null;
 
