@@ -9,7 +9,8 @@ import {
   Users, 
   Building2, 
   LogOut, 
-  ShieldCheck 
+  ShieldCheck,
+  Home
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -36,6 +37,7 @@ export default function AdminLayout({
 
   // ✅ Removed "Logs" from navigation
   const nav = [
+    { name: "My Dashboard", href: "/dashboard", icon: Home },
     { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
     { name: "Employees", href: "/admin/employees", icon: Users },
     { name: "Departments", href: "/admin/departments", icon: Building2 },

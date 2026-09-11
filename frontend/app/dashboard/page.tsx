@@ -663,9 +663,6 @@ export default function Dashboard() {
                   try {
                     setLoading(true);
                     await handleTimeIn();
-                    toast.success("Time In recorded!");
-                  } catch {
-                    toast.error("Failed to Time In");
                   } finally {
                     setLoading(false);
                   }
@@ -714,9 +711,6 @@ export default function Dashboard() {
                   try {
                     setLoading(true);
                     await handleTimeOut();
-                    toast.success("Time Out recorded!");
-                  } catch {
-                    toast.error("Failed to Time Out");
                   } finally {
                     setLoading(false);
                   }
