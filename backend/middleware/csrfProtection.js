@@ -7,13 +7,13 @@ const csrfProtection = (req, res, next) => {
     return next();
   }
 
-  // Skip for login (no session yet)
-  if (req.path === "/login") {
+  // Skip for login (no session yet, no CSRF cookie)
+  if (req.path === "/api/login") {
     return next();
   }
 
-  // Skip for auth/csrf endpoint (generates the token)
-  if (req.path === "/auth/csrf") {
+  // Skip for auth/csrf endpoint (generates the CSRF token)
+  if (req.path === "/api/auth/csrf") {
     return next();
   }
 
