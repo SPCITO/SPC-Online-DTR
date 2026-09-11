@@ -58,10 +58,12 @@ const request = async (endpoint: string, options: any = {}) => {
 
       if (res.status === 401) {
         csrfToken = null;
-        if (typeof window !== "undefined") {
+        // Don't auto-redirect for auth-check endpoints — let AuthProvider handle gracefully
+        const isAuthCheck = endpoint === "/auth/csrf" || endpoint === "/me";
+        if (!isAuthCheck && typeof window !== "undefined") {
           window.location.href = "/login";
         }
-        return;
+        return null;
       }
 
       throw new Error(data?.message || "Request failed");
