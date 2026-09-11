@@ -273,15 +273,15 @@ export default function EmployeesPage() {
             </div>
 
             {/* Table Container - Internal Scroll */}
-            <div className="relative w-full overflow-y-auto" style={{ maxHeight: '500px' }}>
+            <div className="relative w-full overflow-x-auto overflow-y-auto" style={{ maxHeight: '500px' }}>
               <table className="w-full min-w-[900px]">
                 <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-gray-100">
                   <tr>
-                    <th className="px-6 py-4 text-left text-xs uppercase tracking-wider text-gray-500 font-bold">Employee</th>
-                    <th className="px-6 py-4 text-left text-xs uppercase tracking-wider text-gray-500 font-bold">ID / Email</th>
-                    <th className="px-6 py-4 text-left text-xs uppercase tracking-wider text-gray-500 font-bold">Role</th>
-                    <th className="px-6 py-4 text-left text-xs uppercase tracking-wider text-gray-500 font-bold">Status</th>
-                    <th className="px-6 py-4 text-right text-xs uppercase tracking-wider text-gray-500 font-bold">Actions</th>
+                    <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs uppercase tracking-wider text-gray-500 font-bold">Employee</th>
+                    <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs uppercase tracking-wider text-gray-500 font-bold">ID / Email</th>
+                    <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs uppercase tracking-wider text-gray-500 font-bold">Role</th>
+                    <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs uppercase tracking-wider text-gray-500 font-bold">Status</th>
+                    <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs uppercase tracking-wider text-gray-500 font-bold">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -363,7 +363,7 @@ export default function EmployeesPage() {
               </div>
               
               <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-gray-500 uppercase">Name</label>
                     <input required value={editingEmployee.name} onChange={e => setEditingEmployee({...editingEmployee, name: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" />
@@ -379,7 +379,7 @@ export default function EmployeesPage() {
                   <input type="email" value={editingEmployee.email || ''} onChange={e => setEditingEmployee({...editingEmployee, email: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-gray-500 uppercase">Role</label>
                     <select value={editingEmployee.role} onChange={e => setEditingEmployee({...editingEmployee, role: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none">

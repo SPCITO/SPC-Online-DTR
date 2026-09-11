@@ -253,7 +253,7 @@ function MonthlyContent() {
                 Total Hours
               </div>
 
-              <h2 className="text-4xl font-black mt-4">
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black mt-4">
                 {data.summary.total_hours}
               </h2>
 
@@ -283,7 +283,7 @@ function MonthlyContent() {
                 Late Days
               </div>
 
-              <h2 className="text-4xl font-black mt-4 text-yellow-600">
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black mt-4 text-yellow-600">
                 {data.summary.late_days}
               </h2>
 
@@ -313,7 +313,7 @@ function MonthlyContent() {
                 Days Worked
               </div>
 
-              <h2 className="text-4xl font-black mt-4 text-emerald-700">
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black mt-4 text-emerald-700">
                 {data.summary.total_days}
               </h2>
 
@@ -454,7 +454,7 @@ function MonthlyContent() {
             </div>
 
             {/* WEEK */}
-            <div className="grid grid-cols-7 gap-2 mb-3">
+            <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-3">
               {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d) => (
                 <div
                   key={d}
@@ -476,7 +476,7 @@ function MonthlyContent() {
             </div>
 
             {/* GRID */}
-            <div className="grid grid-cols-7 gap-3">
+            <div className="grid grid-cols-7 gap-1 sm:gap-2 md:gap-3">
 
               {daysArray.map((day, i) => {
 

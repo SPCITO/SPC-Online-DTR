@@ -112,7 +112,7 @@ export default function AdminDashboard() {
               <div className="relative flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Active Now</p>
-                  <h2 className="mt-2 text-5xl font-black text-gray-900">{stats?.activeNow ?? 0}</h2>
+                  <h2 className="mt-2 text-3xl sm:text-4xl lg:text-5xl font-black text-gray-900">{stats?.activeNow ?? 0}</h2>
                   <p className="mt-2 text-sm text-green-600 font-medium flex items-center gap-1">
                     <Users size={14} /> Currently clocked in
                   </p>
@@ -132,7 +132,7 @@ export default function AdminDashboard() {
               <div className="relative flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Today's Activity</p>
-                  <h2 className="mt-2 text-5xl font-black text-gray-900">{stats?.todayLogs ?? 0}</h2>
+                  <h2 className="mt-2 text-3xl sm:text-4xl lg:text-5xl font-black text-gray-900">{stats?.todayLogs ?? 0}</h2>
                   <p className="mt-2 text-sm text-blue-600 font-medium flex items-center gap-1">
                     <Activity size={14} /> Total scans
                   </p>
@@ -152,7 +152,7 @@ export default function AdminDashboard() {
               <div className="relative flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Total Records</p>
-                  <h2 className="mt-2 text-5xl font-black text-gray-900">{stats?.totalLogs ?? 0}</h2>
+                  <h2 className="mt-2 text-3xl sm:text-4xl lg:text-5xl font-black text-gray-900">{stats?.totalLogs ?? 0}</h2>
                   <p className="mt-2 text-sm text-purple-600 font-medium flex items-center gap-1">
                     <FileSpreadsheet size={14} /> Lifetime logs
                   </p>

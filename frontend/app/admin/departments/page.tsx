@@ -346,7 +346,7 @@ export default function AdminDashboardPage() {
         {/* HEADER */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-black text-gray-900 tracking-tight">Department Overview</h1>
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-gray-900 tracking-tight">Department Overview</h1>
             <p className="text-gray-500 mt-2 text-lg">Real-time attendance analytics and reporting.</p>
           </div>
           
@@ -367,7 +367,7 @@ export default function AdminDashboardPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm font-bold uppercase tracking-wider">{stat.label}</p>
-                  <h2 className="text-4xl font-black text-gray-900 mt-2">{stat.value}</h2>
+                  <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-gray-900 mt-2">{stat.value}</h2>
                 </div>
                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${stat.color}`}>
                   <stat.icon size={28} />
@@ -444,7 +444,7 @@ export default function AdminDashboardPage() {
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
-                  className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${
+                  className={`px-4 py-3 rounded-xl font-bold text-sm transition-all ${
                     filter === f
                       ? "bg-emerald-600 text-white shadow-lg shadow-emerald-200"
                       : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
@@ -459,7 +459,7 @@ export default function AdminDashboardPage() {
               <button
                 onClick={handleExportAll}
                 disabled={exporting}
-                className="px-5 py-2.5 rounded-xl bg-gray-900 text-white font-bold text-sm flex items-center gap-2 hover:bg-gray-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-gray-200"
+                className="px-4 py-3 rounded-xl bg-gray-900 text-white font-bold text-sm flex items-center gap-2 hover:bg-gray-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-gray-200"
               >
                 {exporting ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
                 Export All Data
@@ -468,8 +468,8 @@ export default function AdminDashboardPage() {
           </div>
 
                     {/* Table Container with Internal Scroll */}
-          <div className="relative w-full overflow-y-auto" style={{ maxHeight: '500px' }}>
-            <table className="w-full min-w-[1000px]">
+          <div className="relative w-full overflow-x-auto overflow-y-auto" style={{ maxHeight: '500px' }}>
+            <table className="w-full min-w-[750px]">
               <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-gray-100">
                 <tr className="text-xs uppercase tracking-wider text-gray-500 font-bold">
                   <th className="p-5 text-left">Employee</th>

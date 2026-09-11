@@ -163,7 +163,7 @@ export default function DepartmentPage() {
               Back
             </button>
 
-            <h1 className="text-5xl font-black text-gray-900">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-gray-900">
               {DEPARTMENT_NAMES[deptId]}
             </h1>
 
@@ -186,7 +186,7 @@ export default function DepartmentPage() {
                   Total Records
                 </p>
 
-                <h2 className="text-4xl font-black text-gray-900 mt-2">
+                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-gray-900 mt-2">
                   {filteredLogs.length}
                 </h2>
               </div>
@@ -203,7 +203,7 @@ export default function DepartmentPage() {
                   Active Employees
                 </p>
 
-                <h2 className="text-4xl font-black text-gray-900 mt-2">
+                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-gray-900 mt-2">
                   {activeCount}
                 </h2>
               </div>
@@ -220,7 +220,7 @@ export default function DepartmentPage() {
                   Late Employees
                 </p>
 
-                <h2 className="text-4xl font-black text-gray-900 mt-2">
+                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-gray-900 mt-2">
                   {lateCount}
                 </h2>
               </div>
@@ -372,10 +372,10 @@ export default function DepartmentPage() {
 
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-[0.2em] text-gray-400 border-b">
-                    <th className="p-5">Employee</th>
-                    <th className="p-5">Time In</th>
-                    <th className="p-5">Time Out</th>
-                    <th className="p-5">Status</th>
+                    <th className="p-3 sm:p-5">Employee</th>
+                    <th className="p-3 sm:p-5">Time In</th>
+                    <th className="p-3 sm:p-5">Time Out</th>
+                    <th className="p-3 sm:p-5">Status</th>
                   </tr>
                 </thead>
 
@@ -392,12 +392,12 @@ export default function DepartmentPage() {
                         className="border-b border-gray-100 hover:bg-emerald-50/40 transition"
                       >
 
-                        <td className="p-5 font-semibold text-gray-900">
+                        <td className="p-3 sm:p-5 font-semibold text-gray-900">
                           {log.name ||
                             log.employee_db_id}
                         </td>
 
-                        <td className="p-5 text-gray-600">
+                        <td className="p-3 sm:p-5 text-gray-600">
                           {log.time_in
                             ? new Date(
                                 log.time_in
@@ -405,7 +405,7 @@ export default function DepartmentPage() {
                             : "—"}
                         </td>
 
-                        <td className="p-5 text-gray-600">
+                        <td className="p-3 sm:p-5 text-gray-600">
                           {log.time_out
                             ? new Date(
                                 log.time_out
@@ -413,7 +413,7 @@ export default function DepartmentPage() {
                             : "—"}
                         </td>
 
-                        <td className="p-5">
+                        <td className="p-3 sm:p-5">
 
                           {status ===
                             "ACTIVE" && (
