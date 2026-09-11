@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { 
-  LayoutDashboard, 
-  Users, 
-  Building2, 
-  LogOut, 
+import { useAuth } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import {
+  LayoutDashboard,
+  Users,
+  Building2,
+  LogOut,
   ShieldCheck,
   Home
 } from "lucide-react";
@@ -18,22 +19,17 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
+  return (
+    <ProtectedRoute requireAdmin>
+      <AdminLayoutContent>{children}</AdminLayoutContent>
+    </ProtectedRoute>
+  );
+}
+
+function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-
-  useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const data = await api.me();
-        setUser(data);
-      } catch {
-        router.replace("/login");
-      }
-    };
-
-    loadUser();
-  }, [router]);
+  const { user } = useAuth();
 
   // ✅ Removed "Logs" from navigation
   const nav = [

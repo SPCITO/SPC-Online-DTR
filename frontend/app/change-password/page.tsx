@@ -1,38 +1,34 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import toast from "react-hot-toast";
 import { Lock, ShieldCheck, Eye, EyeOff } from "lucide-react";
 
 export default function ChangePasswordPage() {
+  return (
+    <ProtectedRoute>
+      <ChangePasswordContent />
+    </ProtectedRoute>
+  );
+}
+
+function ChangePasswordContent() {
   const router = useRouter();
+  const { user } = useAuth();
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
-  const [user, setUser] = useState<any>(null);
 
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-
-  // fetch user session
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const me = await api.me();
-        setUser(me);
-      } catch {
-        router.replace("/login");
-      }
-    };
-
-    fetchUser();
-  }, [router]);
 
   const passwordStrength = (pwd: string) => {
     let score = 0;
@@ -76,10 +72,7 @@ export default function ChangePasswordPage() {
 
       toast.success("Password updated successfully");
 
-      // Clear stored auth data — session is now invalidated server-side
-      localStorage.removeItem("auth_token");
-      localStorage.removeItem("user");
-
+      // Session invalidated server-side (cookies cleared by backend)
       router.replace("/login");
     } catch (err: any) {
       toast.error(err?.message || "Failed to update password");

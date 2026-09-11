@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -14,25 +16,19 @@ import {
 } from "lucide-react";
 
 export default function MonthlyDashboard() {
-  const [user, setUser] = useState<any>(null);
+  return (
+    <ProtectedRoute>
+      <MonthlyContent />
+    </ProtectedRoute>
+  );
+}
+
+function MonthlyContent() {
+  const { user } = useAuth();
   const [data, setData] = useState<any>(null);
   const [selectedDay, setSelectedDay] = useState<any>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const router = useRouter();
-
-  // LOAD USER
-  useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const data = await api.me();
-        setUser(data);
-      } catch {
-        router.replace("/login");
-      }
-    };
-
-    loadUser();
-  }, [router]);
 
   // FETCH DATA
   const fetchMonthly = async () => {

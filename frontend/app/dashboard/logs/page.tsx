@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -12,24 +14,18 @@ import {
 } from "lucide-react";
 
 export default function UserLogsPage() {
-  const [user, setUser] = useState<any>(null);
+  return (
+    <ProtectedRoute>
+      <UserLogsContent />
+    </ProtectedRoute>
+  );
+}
+
+function UserLogsContent() {
+  const { user } = useAuth();
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-
-  // LOAD USER
-  useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const data = await api.me();
-        setUser(data);
-      } catch {
-        router.replace("/login");
-      }
-    };
-
-    loadUser();
-  }, [router]);
 
   // FETCH LOGS
   const fetchLogs = async () => {

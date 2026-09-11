@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import {
   LogOut,
   Clock3,
@@ -15,7 +16,15 @@ import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 
 export default function Dashboard() {
-  const { user, loading: authLoading } = useAuth();
+  return (
+    <ProtectedRoute>
+      <DashboardContent />
+    </ProtectedRoute>
+  );
+}
+
+function DashboardContent() {
+  const { user } = useAuth();
 
   const router = useRouter();
 
@@ -29,12 +38,12 @@ export default function Dashboard() {
 
   //FIRST-LOGIN PASSWORD RESET CHECK 
   useEffect(() => {
-    if (!authLoading && user) {
+    if (user) {
       if (user.mustChangePassword) {
         router.replace("/change-password");
       }
     }
-  }, [user, authLoading, router]);
+  }, [user, router]);
 
   //LOGOUT FUNCTION
   const logout = async () => {
@@ -83,7 +92,7 @@ export default function Dashboard() {
 
   // STATUS CHECK
   const checkStatus = async () => {
-    if (!user || authLoading) return;
+    if (!user) return;
 
     try {
       const res = await api.getStatus(user.employee_db_id);
@@ -95,7 +104,7 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (!user || authLoading) return;
+    if (!user) return;
 
     let active = true;
 
@@ -111,7 +120,7 @@ export default function Dashboard() {
     return () => {
       active = false;
     };
-  }, [user, authLoading]);
+  }, [user]);
 
   // LIVE WORK TIMER
   useEffect(() => {
@@ -134,13 +143,6 @@ export default function Dashboard() {
 
     return () => clearInterval(interval);
   }, [timeIn]);
-
-  
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.replace("/login");
-    }
-  }, [user, authLoading, router]);
 
   // ACTIONS
   const handleTimeIn = async () => {
@@ -178,18 +180,6 @@ export default function Dashboard() {
       setLoading(false);
     }
   };
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-gray-500">
-        Loading session...
-      </div>
-    );
-  }
-
-  if (!user) {
-    return null;
-  }
 
   return (
     <div className="min-h-screen bg-[#f3f7f4] overflow-x-hidden">
