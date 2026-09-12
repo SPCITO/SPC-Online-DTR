@@ -74,23 +74,28 @@ app.set("trust proxy", 1);
 		const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 		const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
-		const [[{ todayLogs }]] = await db.promise().query(
-		  "SELECT COUNT(*) AS todayLogs FROM attendance_logs WHERE time_in >= ? AND time_in <= ?",
-		  [startOfDay, endOfDay]
-		);
-
-		const [[{ activeNow }]] = await db.promise().query(
-		  "SELECT COUNT(*) AS activeNow FROM attendance_logs WHERE time_in >= ? AND time_in <= ? AND time_out IS NULL",
-		  [startOfDay, endOfDay]
-		);
-
-		const [[{ totalEmployees }]] = await db.promise().query(
-		  "SELECT COUNT(*) AS totalEmployees FROM employees WHERE is_active = 1"
-		);
-
-		const [[{ totalLogs }]] = await db.promise().query(
-		  "SELECT COUNT(*) AS totalLogs FROM attendance_logs"
-		);
+		// Run all 4 independent COUNT queries in parallel
+		const [
+		  [[{ todayLogs }]],
+		  [[{ activeNow }]],
+		  [[{ totalEmployees }]],
+		  [[{ totalLogs }]],
+		] = await Promise.all([
+		  db.promise().query(
+			"SELECT COUNT(*) AS todayLogs FROM attendance_logs WHERE time_in >= ? AND time_in <= ?",
+			[startOfDay, endOfDay]
+		  ),
+		  db.promise().query(
+			"SELECT COUNT(*) AS activeNow FROM attendance_logs WHERE time_in >= ? AND time_in <= ? AND time_out IS NULL",
+			[startOfDay, endOfDay]
+		  ),
+		  db.promise().query(
+			"SELECT COUNT(*) AS totalEmployees FROM employees WHERE is_active = 1"
+		  ),
+		  db.promise().query(
+			"SELECT COUNT(*) AS totalLogs FROM attendance_logs"
+		  ),
+		]);
 
 		res.json({ todayLogs, activeNow, totalEmployees, totalLogs });
 	  } catch (err) {
