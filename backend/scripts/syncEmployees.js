@@ -68,8 +68,9 @@ const syncEmployees = async () => {
           name,
           username,
           password,
-          role
-        ) VALUES (?, ?, ?, ?, ?)
+          role,
+          must_change_password
+        ) VALUES (?, ?, ?, ?, ?, TRUE)
         `,
         [
           user.PK_user,

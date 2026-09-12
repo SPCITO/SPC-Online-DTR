@@ -114,9 +114,6 @@ router.post("/login", loginLimiter, async (req, res) => {
       });
     }
 
-    // CHECK IF USER STILL USES DEFAULT PASSWORD
-    const isUsingDefaultPassword = await bcrypt.compare("SPC0", user.password);
-
     const session_id = uuidv4();
 
     // Update active session
@@ -158,7 +155,7 @@ router.post("/login", loginLimiter, async (req, res) => {
 
     res.json({
       success: true,
-      mustChangePassword: isUsingDefaultPassword,
+      mustChangePassword: !!user.must_change_password,
       csrfToken,
       user: {
         id: user.id,
@@ -221,7 +218,7 @@ router.get("/me", verifyToken, async (req, res) => {
           e.id,
           e.username,
           e.role,
-          e.password,
+          e.must_change_password,
           d.empid,
           d.fullname,
           d.FK_dept
@@ -242,9 +239,6 @@ router.get("/me", verifyToken, async (req, res) => {
 
     const user = rows[0];
 
-    // Check if user still uses default password (for first-login redirect)
-    const isUsingDefaultPassword = await bcrypt.compare("SPC0", user.password);
-
     res.json({
       employee_db_id: user.id,
       username: user.username,
@@ -252,7 +246,7 @@ router.get("/me", verifyToken, async (req, res) => {
       employee_id: user.empid,
       name: user.fullname,
       department_id: user.FK_dept,
-      mustChangePassword: isUsingDefaultPassword,
+      mustChangePassword: !!user.must_change_password,
     });
   } catch (err) {
     console.error("Fetch current user error:", err);
@@ -300,10 +294,10 @@ router.post("/change-password", verifyToken, changePasswordLimiter, async (req, 
       return res.status(401).json({ message: "Current password is incorrect" });
     }
 
-    // Hash and update new password
+    // Hash and update new password, clear must_change_password flag
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await db.promise().query(
-      "UPDATE employees SET password = ? WHERE id = ?",
+      "UPDATE employees SET password = ?, must_change_password = FALSE WHERE id = ?",
       [hashedPassword, userId]
     );
 

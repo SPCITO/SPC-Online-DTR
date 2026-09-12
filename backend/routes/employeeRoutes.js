@@ -90,7 +90,7 @@ router.post("/", verifyToken, requireRole("admin"), async (req, res) => {
     const hashed = await bcrypt.hash(finalPassword, 10);
 
     const [result] = await db.promise().query(
-      "INSERT INTO employees (name, employee_id, email, password, role, is_active) VALUES (?, ?, ?, ?, ?, 1)",
+      "INSERT INTO employees (name, employee_id, email, password, role, is_active, must_change_password) VALUES (?, ?, ?, ?, ?, 1, TRUE)",
       [name, employee_id, email, hashed, role]
     );
 
