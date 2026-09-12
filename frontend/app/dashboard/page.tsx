@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -34,6 +34,10 @@ function DashboardContent() {
   const [currentDate, setCurrentDate] = useState("");
   const [workDuration, setWorkDuration] = useState("00:00:00");
   const [loading, setLoading] = useState(false);
+
+  // Ref to avoid stale closures in polling
+  const statusRef = useRef(status);
+  useEffect(() => { statusRef.current = status; }, [status]);
 
 
   //FIRST-LOGIN PASSWORD RESET CHECK 
@@ -120,14 +124,18 @@ function DashboardContent() {
 
     let active = true;
 
-    const loop = async () => {
-      while (active) {
-        await checkStatus();
-        await new Promise((r) => setTimeout(r, 30000));
+    const poll = async () => {
+      if (!active) return;
+      await checkStatus();
+      // Adaptive: poll every 30s when IN, every 60s when OUT
+      const interval = statusRef.current === "IN" ? 30000 : 60000;
+      if (active) {
+        setTimeout(poll, interval);
       }
     };
 
-    loop();
+    // Initial check immediately
+    poll();
 
     return () => {
       active = false;
