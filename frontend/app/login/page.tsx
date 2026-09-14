@@ -1,17 +1,43 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { LockKeyhole, User, ArrowLeft } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // If already authenticated, redirect to dashboard
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace("/dashboard");
+    }
+  }, [authLoading, user, router]);
+
+  // Show loading while checking auth state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f4f7f5]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
+          <p className="text-sm font-medium text-gray-500 animate-pulse">Checking session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render login form if already authenticated (prevents flash)
+  if (user) {
+    return null;
+  }
 
   const handleLogin = async () => {
     if (!username || !password) {

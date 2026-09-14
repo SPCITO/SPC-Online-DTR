@@ -114,6 +114,17 @@ router.post("/login", loginLimiter, async (req, res) => {
       });
     }
 
+    // Reject login if there is already an active session for this employee.
+    // active_session is a single column — only one session per employee.
+    // Without this check, a second login would overwrite the existing session,
+    // and because HttpOnly cookies are shared per-domain, both tabs would
+    // end up using the same token.
+    if (user.active_session) {
+      return res.status(409).json({
+        message: "An active session already exists for this account. Please log out from the other session first.",
+      });
+    }
+
     const session_id = uuidv4();
 
     // Update active session
