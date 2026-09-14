@@ -159,6 +159,12 @@ export const api = {
   deleteEmployee: (id: number | string) =>
     request(`/employees/${id}`, { method: "DELETE" }),
 
+  resetEmployeePassword: (id: number | string, newPassword?: string) =>
+    request(`/employees/${id}/reset-password`, {
+      method: "PUT",
+      body: JSON.stringify(newPassword ? { newPassword } : {}),
+    }),
+
   getDepartments: () => request("/departments"),
   getDepartmentLogsByDepartment: (deptId: number) =>
     request(`/departments/${deptId}/logs`),

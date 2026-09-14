@@ -20,6 +20,8 @@ import {
   Power,
   X,
   Check,
+  KeyRound,
+  Copy,
 } from "lucide-react";
 
 interface Employee {
@@ -54,6 +56,15 @@ export default function EmployeesPage() {
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Reset Password Modal State
+  const [resetTarget, setResetTarget] = useState<Employee | null>(null);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [resetMode, setResetMode] = useState<"generate" | "custom">("generate");
+  const [resetCustomPw, setResetCustomPw] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetResult, setResetResult] = useState<{ tempPassword?: string } | null>(null);
+  const [resetCopied, setResetCopied] = useState(false);
 
   // Role Guard
   useEffect(() => {
@@ -182,6 +193,45 @@ export default function EmployeesPage() {
       setEmployees(prev => prev.filter(e => e.id !== emp.id));
     } catch (err: any) {
       alert(err.message || "Failed to delete employee");
+    }
+  };
+
+  const handleResetClick = (emp: Employee) => {
+    setResetTarget(emp);
+    setResetMode("generate");
+    setResetCustomPw("");
+    setResetResult(null);
+    setResetCopied(false);
+    setIsResetModalOpen(true);
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetTarget) return;
+
+    if (resetMode === "custom" && resetCustomPw.length < 6) {
+      alert("Password must be at least 6 characters");
+      return;
+    }
+
+    setResetLoading(true);
+    try {
+      const data = await api.resetEmployeePassword(
+        resetTarget.id,
+        resetMode === "custom" ? resetCustomPw : undefined
+      );
+      setResetResult(data as { tempPassword?: string });
+    } catch (err: any) {
+      alert(err.message || "Failed to reset password");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const copyResetPassword = () => {
+    if (resetResult?.tempPassword) {
+      navigator.clipboard.writeText(resetResult.tempPassword);
+      setResetCopied(true);
+      setTimeout(() => setResetCopied(false), 2000);
     }
   };
 
@@ -322,6 +372,9 @@ export default function EmployeesPage() {
                               <button onClick={() => handleEditClick(emp)} className="p-2 hover:bg-blue-50 text-gray-400 hover:text-blue-600 rounded-lg transition-colors" title="Edit">
                                 <Edit2 size={18} />
                               </button>
+                              <button onClick={() => handleResetClick(emp)} className="p-2 hover:bg-amber-50 text-gray-400 hover:text-amber-600 rounded-lg transition-colors" title="Reset Password">
+                                <KeyRound size={18} />
+                              </button>
                               <button onClick={() => toggleStatus(emp)} className={`p-2 rounded-lg transition-colors ${emp.is_active ? 'hover:bg-orange-50 text-gray-400 hover:text-orange-600' : 'hover:bg-green-50 text-gray-400 hover:text-green-600'}`} title={emp.is_active ? "Disable" : "Enable"}>
                                 <Power size={18} />
                               </button>
@@ -403,6 +456,85 @@ export default function EmployeesPage() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* RESET PASSWORD MODAL */}
+      <AnimatePresence>
+        {isResetModalOpen && resetTarget && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><KeyRound size={18} className="text-amber-600"/> Reset Password</h3>
+                <button onClick={() => setIsResetModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X size={20} /></button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {!resetResult ? (
+                  <>
+                    <p className="text-sm text-gray-600">Reset password for <span className="font-bold">{resetTarget.name}</span>?</p>
+
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setResetMode("generate")} className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${resetMode === "generate" ? "bg-amber-500 text-white shadow-lg shadow-amber-200" : "bg-gray-100 text-gray-500"}`}>Generate Random</button>
+                      <button type="button" onClick={() => setResetMode("custom")} className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${resetMode === "custom" ? "bg-amber-500 text-white shadow-lg shadow-amber-200" : "bg-gray-100 text-gray-500"}`}>Set Custom</button>
+                    </div>
+
+                    {resetMode === "custom" && (
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-gray-500 uppercase">New Password</label>
+                        <input
+                          type="text"
+                          value={resetCustomPw}
+                          onChange={e => setResetCustomPw(e.target.value)}
+                          placeholder="Minimum 6 characters"
+                          className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-amber-500 outline-none"
+                        />
+                      </div>
+                    )}
+
+                    <p className="text-xs text-gray-400">The employee will be required to change their password on next login.</p>
+
+                    <div className="pt-2 flex gap-3">
+                      <button type="button" onClick={() => setIsResetModalOpen(false)} className="flex-1 py-3 rounded-xl font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">Cancel</button>
+                      <button type="button" onClick={handleResetPassword} disabled={resetLoading} className="flex-1 py-3 rounded-xl font-bold text-white bg-amber-500 hover:bg-amber-600 shadow-lg shadow-amber-200 transition-all disabled:opacity-50 flex justify-center">
+                        {resetLoading ? <Loader2 className="animate-spin" /> : 'Reset Password'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-center py-2">
+                      <div className="mx-auto w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mb-3">
+                        <Check size={24} className="text-green-600" />
+                      </div>
+                      <p className="font-bold text-gray-900">Password Reset Successfully</p>
+                    </div>
+
+                    {resetResult.tempPassword && (
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-gray-500 uppercase">Temporary Password</label>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 px-4 py-3 rounded-xl bg-gray-100 text-gray-900 font-mono text-sm break-all">{resetResult.tempPassword}</code>
+                          <button onClick={copyResetPassword} className="p-2 hover:bg-gray-200 rounded-lg transition-colors" title="Copy">
+                            {resetCopied ? <Check size={18} className="text-green-600" /> : <Copy size={18} className="text-gray-500" />}
+                          </button>
+                        </div>
+                        <p className="text-xs text-amber-600 font-medium">Share this password with the employee. They will be required to change it after login.</p>
+                      </div>
+                    )}
+
+                    {!resetResult.tempPassword && (
+                      <p className="text-sm text-gray-600 text-center">The employee&apos;s password has been updated. They will be required to change it after login.</p>
+                    )}
+
+                    <div className="pt-2">
+                      <button type="button" onClick={() => setIsResetModalOpen(false)} className="w-full py-3 rounded-xl font-bold text-white bg-gray-900 hover:bg-gray-800 transition-colors">Done</button>
+                    </div>
+                  </>
+                )}
+              </div>
             </motion.div>
           </motion.div>
         )}

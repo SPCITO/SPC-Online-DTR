@@ -1,9 +1,5 @@
 const db = require("../config/db");
 const bcrypt = require("bcryptjs");
-const fs = require("fs");
-const path = require("path");
-
-const logFile = path.join(__dirname, "generated_credentials.txt");
 
 const generateUsername = (fullname) => {
   return fullname
@@ -83,16 +79,9 @@ const syncEmployees = async () => {
 
       console.log(`✔ Created: ${user.fullname}`);
       console.log(`   Username: ${username}`);
-      console.log(`   Password: ${tempPassword}`);
-
-      fs.appendFileSync(
-        logFile,
-        `${user.fullname} | ${username} | ${tempPassword}\n`
-      );
     }
 
     console.log("\n✅ Employee sync completed!");
-    console.log(`Credentials saved to: ${logFile}`);
   } catch (err) {
     console.error("Sync failed:", err);
   }

@@ -22,7 +22,7 @@ app.set("trust proxy", 1);
 	    }
 	  },	  credentials: true,
 	  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-	  allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-Token"],
+	  allowedHeaders: ["Content-Type", "X-CSRF-Token"],
 	  maxAge: 600,
 	};
 	

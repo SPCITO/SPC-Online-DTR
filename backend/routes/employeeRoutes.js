@@ -2,9 +2,11 @@ const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 
 const verifyToken = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
+const logSecurityEvent = require("../utils/securityLogger");
 
 // ==========================
 // 🔐 GET ALL EMPLOYEES
@@ -206,6 +208,66 @@ router.delete("/:id", verifyToken, requireRole("admin"), async (req, res) => {
   } catch (error) {
     console.error("DELETE employee error:", error);
     return res.status(500).json({ message: "Error deleting employee" });
+  }
+});
+
+// ==========================
+// 🔑 RESET EMPLOYEE PASSWORD (ADMIN ONLY)
+// ==========================
+router.put("/:id/reset-password", verifyToken, requireRole("admin"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+
+    // Verify target employee exists
+    const [existing] = await db.promise().query(
+      "SELECT id, name FROM employees WHERE id = ?",
+      [id]
+    );
+
+    if (existing.length === 0) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    let passwordToUse = newPassword;
+    let generated = false;
+
+    // Generate cryptographically random password if not provided
+    if (!passwordToUse) {
+      passwordToUse = crypto.randomBytes(9).toString("base64url");
+      generated = true;
+    }
+
+    // Validate password length
+    if (passwordToUse.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+
+    // Hash password, set must_change_password, invalidate session
+    const hashedPassword = await bcrypt.hash(passwordToUse, 10);
+    await db.promise().query(
+      "UPDATE employees SET password = ?, must_change_password = TRUE, active_session = NULL WHERE id = ?",
+      [hashedPassword, id]
+    );
+
+    // Log the admin password reset
+    logSecurityEvent({
+      employee_id: req.user.id,
+      action_type: "PASSWORD_RESET_BY_ADMIN",
+      ip_address: req.ip,
+      user_agent: req.headers["user-agent"],
+      session_id: req.user?.session_id,
+    });
+
+    const response = { message: "Password reset successfully" };
+    if (generated) {
+      response.tempPassword = passwordToUse;
+    }
+
+    return res.json(response);
+  } catch (error) {
+    console.error("RESET PASSWORD error:", error);
+    return res.status(500).json({ message: "Error resetting password" });
   }
 });
 

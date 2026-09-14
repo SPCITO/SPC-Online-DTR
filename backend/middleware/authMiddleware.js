@@ -7,14 +7,8 @@ if (!process.env.JWT_SECRET) {
 const JWT_SECRET = process.env.JWT_SECRET;
 
 const verifyToken = async (req, res, next) => {
-  // Primary: HttpOnly cookie (set by login)
-  let token = req.cookies?.token;
-
-  // Fallback: Authorization header (temporary — for migration testing and curl/Postman)
-  // Remove this fallback after cookie migration is verified in production
-  if (!token) {
-    token = req.headers.authorization?.split(" ")[1];
-  }
+  // HttpOnly cookie authentication (Authorization header fallback removed — cookie migration verified)
+  const token = req.cookies?.token;
 
   if (!token) {
     return res.status(401).json({
