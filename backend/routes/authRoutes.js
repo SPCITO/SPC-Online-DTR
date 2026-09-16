@@ -24,6 +24,9 @@ const AUTH_COOKIE_OPTIONS = {
   path: "/",
 };
 
+// Session duration: 24 hours (synchronized with JWT and cookie lifetime)
+const SESSION_DURATION_MS = 24 * 60 * 60 * 1000;
+
 const CSRF_COOKIE_OPTIONS = {
   httpOnly: false, // JS must read this for header submission
   secure: isProd,
@@ -114,28 +117,31 @@ router.post("/login", loginLimiter, async (req, res) => {
       });
     }
 
-    // Reject login if there is already an active session for this employee.
-    // active_session is a single column — only one session per employee.
-    // Without this check, a second login would overwrite the existing session,
-    // and because HttpOnly cookies are shared per-domain, both tabs would
-    // end up using the same token.
-    if (user.active_session) {
+    // Atomic session acquisition: try to claim the session in a single UPDATE.
+    // This handles stale sessions (expired or pre-migration NULL expiration)
+    // and prevents race conditions where two concurrent logins both see a
+    // stale session and both succeed.
+    const session_id = uuidv4();
+    const sessionExpiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+
+    const [updateResult] = await db.promise().query(
+      `UPDATE employees
+       SET active_session = ?, session_expires_at = ?
+       WHERE id = ?
+         AND (
+           active_session IS NULL
+           OR session_expires_at IS NULL
+           OR session_expires_at <= NOW()
+         )`,
+      [session_id, sessionExpiresAt, user.id]
+    );
+
+    if (updateResult.affectedRows === 0) {
+      // Another active session exists (not stale) — reject
       return res.status(409).json({
         message: "An active session already exists for this account. Please log out from the other session first.",
       });
     }
-
-    const session_id = uuidv4();
-
-    // Update active session
-    await db.promise().query(
-      `
-      UPDATE employees
-      SET active_session = ?
-      WHERE id = ?
-      `,
-      [session_id, user.id]
-    );
 
     const token = jwt.sign(
       {
@@ -202,7 +208,7 @@ router.post("/logout", verifyToken, async (req, res) => {
 
     // Invalidate session in database
     await db.promise().query(
-      "UPDATE employees SET active_session = NULL WHERE id = ?",
+      "UPDATE employees SET active_session = NULL, session_expires_at = NULL WHERE id = ?",
       [req.user.id]
     );
   } catch (err) {
@@ -314,7 +320,7 @@ router.post("/change-password", verifyToken, changePasswordLimiter, async (req, 
 
     // Invalidate session — forces re-login with new password
     await db.promise().query(
-      "UPDATE employees SET active_session = NULL WHERE id = ?",
+      "UPDATE employees SET active_session = NULL, session_expires_at = NULL WHERE id = ?",
       [userId]
     );
 

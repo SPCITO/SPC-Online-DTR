@@ -246,7 +246,7 @@ router.put("/:id/reset-password", verifyToken, requireRole("admin"), async (req,
     // Hash password, set must_change_password, invalidate session
     const hashedPassword = await bcrypt.hash(passwordToUse, 10);
     await db.promise().query(
-      "UPDATE employees SET password = ?, must_change_password = TRUE, active_session = NULL WHERE id = ?",
+      "UPDATE employees SET password = ?, must_change_password = TRUE, active_session = NULL, session_expires_at = NULL WHERE id = ?",
       [hashedPassword, id]
     );
 
