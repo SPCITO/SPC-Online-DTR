@@ -55,16 +55,47 @@ const syncEmployees = async () => {
     let skipped = 0;
 
     // -------------------------------------------------------
-    // STEP 2: Deactivate application accounts for inactive users
+    // STEP 2: Process inactive users (deactivate existing, create missing)
     // -------------------------------------------------------
     for (const user of inactiveUsers) {
-      const result = await query(
-        `UPDATE employees SET is_active = 0 WHERE dtr_user_id = ? AND is_active = 1`,
+      const existing = await query(
+        `SELECT id, is_active FROM employees WHERE dtr_user_id = ?`,
         [user.PK_user]
       );
-      if (result.affectedRows > 0) {
-        deactivated++;
-        console.log(`⚪ Deactivated: ${user.fullname}`);
+
+      if (existing.length > 0) {
+        // Existing account — deactivate if currently active
+        if (existing[0].is_active === 1) {
+          await query(
+            `UPDATE employees SET is_active = 0 WHERE id = ?`,
+            [existing[0].id]
+          );
+          deactivated++;
+          console.log(`⚪ Deactivated: ${user.fullname}`);
+        }
+      } else {
+        // New inactive account — create as inactive
+        const baseUsername = generateUsername(user.fullname);
+        let username = baseUsername;
+        let counter = 1;
+        while (true) {
+          const check = await query(
+            `SELECT id FROM employees WHERE username = ?`,
+            [username]
+          );
+          if (check.length === 0) break;
+          username = `${baseUsername}${counter}`;
+          counter++;
+        }
+        const hashedPassword = await bcrypt.hash(INITIAL_PASSWORD, 10);
+        await query(
+          `INSERT INTO employees (
+            dtr_user_id, name, username, password, role, must_change_password, is_active
+          ) VALUES (?, ?, ?, ?, ?, TRUE, 0)`,
+          [user.PK_user, user.fullname, username, hashedPassword, user.isadmin ? "admin" : "employee"]
+        );
+        created++;
+        console.log(`⚪ Created inactive: ${user.fullname} (${username})`);
       }
     }
 
