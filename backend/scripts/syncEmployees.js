@@ -155,4 +155,8 @@ const syncEmployees = async () => {
   }
 };
 
-syncEmployees();
+// Only execute when run directly: node scripts/syncEmployees.js
+// Does NOT execute when imported via require()
+if (require.main === module) {
+  syncEmployees();
+}
