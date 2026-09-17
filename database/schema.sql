@@ -1,13 +1,17 @@
 -- ============================================================
 -- SPC Online DTR — Production MySQL Schema
 -- Generated: 2025-09-15
+-- Updated: 2026-09-17 (L.8 — school DB migration readiness)
 -- Application: Next.js (Vercel) → Express (Render) → MySQL
 --
--- This schema defines the 4 runtime-required tables:
---   1. dtr_user      — Legacy employee master data (read-only by app)
---   2. employees     — Application user accounts, auth, sessions
---   3. attendance_logs — Daily time-in/time-out records
---   4. security_logs — Security event audit trail
+-- This schema defines the 3 application tables:
+--   1. employees       — Application user accounts, auth, sessions
+--   2. attendance_logs — Daily time-in/time-out records
+--   3. security_logs   — Security event audit trail
+--
+-- The legacy school tables (dtr_user, dtr_entry, dtr_dept, dtr_org)
+-- are owned by the school DTR system and must NOT be created or
+-- modified by this application schema.
 --
 -- Safety: Uses CREATE TABLE IF NOT EXISTS. No destructive SQL.
 -- ============================================================
@@ -16,36 +20,10 @@ SET NAMES utf8mb4;
 SET CHARACTER SET utf8mb4;
 
 -- ============================================================
--- 1. dtr_user — Legacy employee master data
---    Source of truth for employee names, departments, empids.
---    Read-only by application (joined via employees.dtr_user_id).
---    Populated by existing school DTR system.
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS `dtr_user` (
-  `PK_user`        INT UNSIGNED    NOT NULL AUTO_INCREMENT,
-  `FK_dept`        TINYINT UNSIGNED         DEFAULT 0,
-  `empid`          VARCHAR(15)              DEFAULT '0',
-  `fullname`       VARCHAR(50)     NOT NULL,
-  `picture`        LONGBLOB                 DEFAULT NULL,
-  `fingerprint`    BLOB                     DEFAULT NULL,
-  `fp_zk4500`      BLOB                     DEFAULT NULL,
-  `groupno`        TINYINT UNSIGNED         DEFAULT 1,
-  `isadmin`        TINYINT UNSIGNED         DEFAULT 0,
-  `username`       VARCHAR(20)              DEFAULT 'user',
-  `password`       VARCHAR(20)              DEFAULT NULL,
-  `isactive`       TINYINT UNSIGNED         DEFAULT 1,
-  `FK_clinic_user` INT UNSIGNED             DEFAULT 0,
-  `isupdonline`    TINYINT                  DEFAULT 0,
-
-  PRIMARY KEY (`PK_user`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-
--- ============================================================
--- 2. employees — Application user accounts
+-- 1. employees — Application user accounts
 --    Authentication, session management, role authorization.
 --    Linked to dtr_user via dtr_user_id (logical, no FK constraint).
+--    Populated by syncEmployees.js from dtr_user.
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS `employees` (
@@ -71,7 +49,7 @@ CREATE TABLE IF NOT EXISTS `employees` (
 
 
 -- ============================================================
--- 3. attendance_logs — Daily time-in/time-out records
+-- 2. attendance_logs — Daily time-in/time-out records
 --    Each row is one attendance session for one employee.
 --    time_out IS NULL means the employee is currently clocked in.
 -- ============================================================
@@ -92,7 +70,7 @@ CREATE TABLE IF NOT EXISTS `attendance_logs` (
 
 
 -- ============================================================
--- 4. security_logs — Security event audit trail
+-- 3. security_logs — Security event audit trail
 --    Write-only by application. Logs login, logout, time-in,
 --    time-out, password change, admin password reset, etc.
 -- ============================================================
@@ -131,9 +109,8 @@ CREATE INDEX `idx_time_in`
 CREATE INDEX `idx_emp_timein`
   ON `attendance_logs` (`employee_db_id`, `time_in`);
 
--- Optimize department filtering by groupno
-CREATE INDEX `idx_groupno`
-  ON `dtr_user` (`groupno`);
+-- Note: idx_groupno on dtr_user is NOT created here.
+-- The application must not modify existing school tables.
 
 -- Optimize employee listing ORDER BY created_at DESC
 CREATE INDEX `idx_created_at`
