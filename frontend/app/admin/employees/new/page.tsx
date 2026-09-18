@@ -24,6 +24,7 @@ export default function AddEmployeePage() {
   const [error, setError] = useState("");
   const [formData, setFormData] = useState({
     name: "",
+    username: "",
     employee_id: "",
     email: "",
     password: "",
@@ -142,6 +143,24 @@ export default function AddEmployeePage() {
                 </div>
 
                 <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-gray-500 ml-1">Username</label>
+                  <div className="relative">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <input
+                      required
+                      name="username"
+                      value={formData.username}
+                      onChange={handleChange}
+                      type="text"
+                      placeholder="john.doe"
+                      className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium text-gray-900 placeholder-gray-400"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="space-y-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-gray-500 ml-1">Employee ID</label>
                   <div className="relative">
                     <BadgeCent className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -152,6 +171,22 @@ export default function AddEmployeePage() {
                       onChange={handleChange}
                       type="text"
                       placeholder="EMP-001"
+                      className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium text-gray-900 placeholder-gray-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-gray-500 ml-1">Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <input
+                      required
+                      name="password"
+                      value={formData.password}
+                      onChange={handleChange}
+                      type="password"
+                      placeholder="••••••••"
                       className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium text-gray-900 placeholder-gray-400"
                     />
                   </div>
@@ -175,22 +210,6 @@ export default function AddEmployeePage() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-gray-500 ml-1">Password</label>
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                    <input
-                      required
-                      name="password"
-                      value={formData.password}
-                      onChange={handleChange}
-                      type="password"
-                      placeholder="••••••••"
-                      className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium text-gray-900 placeholder-gray-400"
-                    />
-                  </div>
-                </div>
-
                 <div className="space-y-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-gray-500 ml-1">Role</label>
                   <div className="relative">

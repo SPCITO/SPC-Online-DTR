@@ -19,14 +19,14 @@ router.get("/", verifyToken, requireRole("admin"), async (req, res) => {
     const offset = (page - 1) * limit;
 
     let countSql = "SELECT COUNT(*) as total FROM employees";
-    let dataSql = "SELECT id, name, employee_id, email, role, created_at, is_active FROM employees";
+    let dataSql = "SELECT id, name, username, employee_id, email, role, created_at, is_active FROM employees";
     const params = [];
 
     if (search) {
-      const where = " WHERE name LIKE ? OR employee_id LIKE ? OR email LIKE ?";
+      const where = " WHERE name LIKE ? OR username LIKE ? OR employee_id LIKE ? OR email LIKE ?";
       countSql += where;
       dataSql += where;
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
 
     const [[{ total }]] = await db.promise().query(countSql, params);
@@ -36,6 +36,7 @@ router.get("/", verifyToken, requireRole("admin"), async (req, res) => {
     const formattedRows = (rows || []).map(row => ({
       id: String(row.id),
       name: row.name,
+      username: row.username,
       employee_id: row.employee_id,
       email: row.email,
       role: row.role,
@@ -62,8 +63,9 @@ router.get("/", verifyToken, requireRole("admin"), async (req, res) => {
 // ==========================
 router.post("/", verifyToken, requireRole("admin"), async (req, res) => {
   try {
-    let { name, employee_id, email, password, role } = req.body;
+    let { name, username, employee_id, email, password, role } = req.body;
     name = name?.trim();
+    username = username?.trim();
     employee_id = employee_id?.trim();
     email = email?.trim();
     role = role || 'employee';
@@ -74,11 +76,21 @@ router.post("/", verifyToken, requireRole("admin"), async (req, res) => {
       return res.status(400).json({ message: "Invalid role. Supported roles: admin, employee" });
     }
 
-    if (!name || !employee_id || !email) {
-      return res.status(400).json({ message: "Name, Employee ID, and Email are required." });
+    if (!name || !username || !employee_id || !email) {
+      return res.status(400).json({ message: "Name, Username, Employee ID, and Email are required." });
     }
 
-    // Check if employee exists
+    // Check if username is taken
+    const [existingUsername] = await db.promise().query(
+      "SELECT id FROM employees WHERE username = ? LIMIT 1",
+      [username]
+    );
+
+    if (existingUsername.length > 0) {
+      return res.status(409).json({ message: "Username already exists." });
+    }
+
+    // Check if employee_id or email exists
     const [existing] = await db.promise().query(
       "SELECT id FROM employees WHERE employee_id = ? OR email = ? LIMIT 1",
       [employee_id, email]
@@ -92,8 +104,8 @@ router.post("/", verifyToken, requireRole("admin"), async (req, res) => {
     const hashed = await bcrypt.hash(finalPassword, 10);
 
     const [result] = await db.promise().query(
-      "INSERT INTO employees (name, employee_id, email, password, role, is_active, must_change_password) VALUES (?, ?, ?, ?, ?, 1, TRUE)",
-      [name, employee_id, email, hashed, role]
+      "INSERT INTO employees (name, username, employee_id, email, password, role, is_active, must_change_password) VALUES (?, ?, ?, ?, ?, ?, 1, TRUE)",
+      [name, username, employee_id, email, hashed, role]
     );
 
     return res.status(201).json({ message: "Employee created successfully", id: result.insertId });
@@ -114,7 +126,7 @@ router.post("/", verifyToken, requireRole("admin"), async (req, res) => {
 router.put("/:id", verifyToken, requireRole("admin"), async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, employee_id, email, role, is_active } = req.body;
+    const { name, username, employee_id, email, role, is_active } = req.body;
 
     // Validate role if provided
     if (role !== undefined) {
@@ -135,6 +147,19 @@ router.put("/:id", verifyToken, requireRole("admin"), async (req, res) => {
     }
 
     // Check for duplicates (excluding current user)
+    if (username) {
+      const trimmedUsername = username.trim();
+      if (!trimmedUsername) {
+        return res.status(400).json({ message: "Username cannot be empty." });
+      }
+      const [dup] = await db.promise().query(
+        "SELECT id FROM employees WHERE username = ? AND id != ?",
+        [trimmedUsername, id]
+      );
+      if (dup.length > 0) {
+        return res.status(409).json({ message: "Username already exists" });
+      }
+    }
     if (employee_id) {
       const [dup] = await db.promise().query(
         "SELECT id FROM employees WHERE employee_id = ? AND id != ?",
@@ -158,6 +183,7 @@ router.put("/:id", verifyToken, requireRole("admin"), async (req, res) => {
     const fields = [];
     const values = [];
     if (name) { fields.push("name = ?"); values.push(name); }
+    if (username) { fields.push("username = ?"); values.push(username.trim()); }
     if (employee_id) { fields.push("employee_id = ?"); values.push(employee_id); }
     if (email) { fields.push("email = ?"); values.push(email); }
     if (role) { fields.push("role = ?"); values.push(role); }
@@ -181,7 +207,7 @@ router.put("/:id", verifyToken, requireRole("admin"), async (req, res) => {
   } catch (error) {
     console.error("PUT employee error:", error);
     if (error.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ message: "Employee ID or Email already exists" });
+      return res.status(409).json({ message: "Username, Employee ID, or Email already exists" });
     }
     return res.status(500).json({ message: "Error updating employee" });
   }

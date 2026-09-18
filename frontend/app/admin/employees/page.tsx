@@ -27,6 +27,7 @@ import {
 interface Employee {
   id: string;
   name: string;
+  username: string | null;
   email: string | null;
   employee_id: string | null;
   department_name?: string | null;
@@ -157,6 +158,7 @@ export default function EmployeesPage() {
     try {
       await api.updateEmployee(editingEmployee.id, {
         name: editingEmployee.name,
+        username: editingEmployee.username,
         employee_id: editingEmployee.employee_id,
         email: editingEmployee.email,
         role: editingEmployee.role,
@@ -328,6 +330,7 @@ export default function EmployeesPage() {
                 <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-gray-100">
                   <tr>
                     <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs uppercase tracking-wider text-gray-500 font-bold">Employee</th>
+                    <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs uppercase tracking-wider text-gray-500 font-bold">Username</th>
                     <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs uppercase tracking-wider text-gray-500 font-bold">ID / Email</th>
                     <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs uppercase tracking-wider text-gray-500 font-bold">Role</th>
                     <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs uppercase tracking-wider text-gray-500 font-bold">Status</th>
@@ -349,6 +352,9 @@ export default function EmployeesPage() {
                                 <p className="text-xs text-gray-500">Joined {new Date(emp.created_at).toLocaleDateString()}</p>
                               </div>
                             </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-sm font-mono text-gray-600">{emp.username || 'N/A'}</span>
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex flex-col">
@@ -386,7 +392,7 @@ export default function EmployeesPage() {
                         </motion.tr>
                       ))
                     ) : (
-                      <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-500"><div className="flex flex-col items-center gap-2"><Search size={32} className="opacity-20" /><p>{loading ? "Searching..." : "No employees found."}</p></div></td></tr>
+                      <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-500"><div className="flex flex-col items-center gap-2"><Search size={32} className="opacity-20" /><p>{loading ? "Searching..." : "No employees found."}</p></div></td></tr>
                     )}
                   </AnimatePresence>
                 </tbody>
@@ -422,14 +428,20 @@ export default function EmployeesPage() {
                     <input required value={editingEmployee.name} onChange={e => setEditingEmployee({...editingEmployee, name: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500 uppercase">Employee ID</label>
-                    <input required value={editingEmployee.employee_id || ''} onChange={e => setEditingEmployee({...editingEmployee, employee_id: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <label className="text-xs font-bold text-gray-500 uppercase">Username</label>
+                    <input required value={editingEmployee.username || ''} onChange={e => setEditingEmployee({...editingEmployee, username: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" />
                   </div>
                 </div>
                 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 uppercase">Email</label>
-                  <input type="email" value={editingEmployee.email || ''} onChange={e => setEditingEmployee({...editingEmployee, email: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Employee ID</label>
+                    <input required value={editingEmployee.employee_id || ''} onChange={e => setEditingEmployee({...editingEmployee, employee_id: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Email</label>
+                    <input type="email" value={editingEmployee.email || ''} onChange={e => setEditingEmployee({...editingEmployee, email: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
