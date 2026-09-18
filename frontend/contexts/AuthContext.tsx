@@ -14,12 +14,14 @@ interface AuthState {
   user: any | null;
   loading: boolean;
   authError: "unauthenticated" | "network" | null;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState>({
   user: null,
   loading: true,
   authError: null,
+  refreshUser: async () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -73,8 +75,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Re-usable refresh for post-login or manual session check
+  const refreshUser = useCallback(async () => {
+    try {
+      setLoading(true);
+      await api.refreshCsrf();
+      const userData = await api.me();
+      if (userData) {
+        setUser(userData);
+        setAuthError(null);
+      } else {
+        setUser(null);
+        setAuthError("unauthenticated");
+      }
+    } catch {
+      setUser(null);
+      setAuthError("unauthenticated");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, authError }}>
+    <AuthContext.Provider value={{ user, loading, authError, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

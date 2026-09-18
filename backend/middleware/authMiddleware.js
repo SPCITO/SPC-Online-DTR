@@ -21,7 +21,7 @@ const verifyToken = async (req, res, next) => {
 
     const [rows] = await db.promise().query(
       `
-      SELECT active_session, must_change_password
+      SELECT active_session, session_expires_at, must_change_password
       FROM employees
       WHERE id = ? AND is_active = 1
       LIMIT 1
@@ -36,6 +36,13 @@ const verifyToken = async (req, res, next) => {
     }
 
     if (rows[0].active_session !== decoded.session_id) {
+      return res.status(401).json({
+        message: "Session expired",
+      });
+    }
+
+    // Enforce database-side session expiration
+    if (rows[0].session_expires_at && new Date(rows[0].session_expires_at) < new Date()) {
       return res.status(401).json({
         message: "Session expired",
       });

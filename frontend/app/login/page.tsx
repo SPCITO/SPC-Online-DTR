@@ -9,7 +9,7 @@ import { LockKeyhole, User, ArrowLeft } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, refreshUser } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -64,11 +64,15 @@ export default function LoginPage() {
       // FIRST LOGIN FLOW
       // Use backend flag instead of client-side password check
       if (loginRes.mustChangePassword) {
+        await refreshUser();
         router.replace("/change-password");
         return;
       }
 
       // EVERYONE GOES TO DASHBOARD
+      // Update auth context with the newly authenticated session,
+      // then navigate via router (no full page reload needed).
+      await refreshUser();
       router.replace("/dashboard");
 
     } catch (err: any) {

@@ -42,4 +42,8 @@ Thumbs.db
 coverage/
 htmlcov/
 .coverage
+
+# Playwright generated artifacts
+playwright-report/
+test-results/
 ```
