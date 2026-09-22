@@ -121,6 +121,28 @@ app.set("trust proxy", 1);
 	const PORT = process.env.PORT || 5000;
 	const server = app.listen(PORT, () => {
 	  console.log(`Server running on port ${PORT}`);
+
+	  // ========== SCHEDULED TASKS ==========
+	  // Initialize the 9:00 PM timeout-reminder scheduler.
+	  // Safe to start even when SMTP is not configured —
+	  // the service will log a warning and skip sending.
+	  try {
+	    const cron = require("node-cron");
+	    const { runTimeoutReminder } = require("./services/timeoutReminder");
+
+	    cron.schedule("0 21 * * *", async () => {
+	      console.log("[Scheduler] 9:00 PM timeout reminder triggered");
+	      try {
+	        await runTimeoutReminder();
+	      } catch (err) {
+	        console.error("[Scheduler] Timeout reminder error:", err.message);
+	      }
+	    }, { timezone: "Asia/Manila" });
+
+	    console.log("✅ Timeout reminder scheduled (9:00 PM PHT daily)");
+	  } catch (err) {
+	    console.warn("⚠️ Timeout reminder scheduler failed to initialize:", err.message);
+	  }
 	});
 
 	// ========== GRACEFUL SHUTDOWN ==========

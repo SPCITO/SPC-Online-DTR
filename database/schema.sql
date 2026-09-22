@@ -89,6 +89,26 @@ CREATE TABLE IF NOT EXISTS `security_logs` (
 
 
 -- ============================================================
+-- 4. notification_log — Idempotency for scheduled notifications
+--    Prevents duplicate emails per employee per calendar day.
+--    Used by the 9:00 PM timeout-reminder scheduler.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS `notification_log` (
+  `id`                INT          NOT NULL AUTO_INCREMENT,
+  `employee_id`       INT          NOT NULL,
+  `notification_date` DATE         NOT NULL,
+  `sent_at`           TIMESTAMP    NULL     DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_employee_date` (`employee_id`, `notification_date`),
+  CONSTRAINT `notification_log_ibfk_1`
+    FOREIGN KEY (`employee_id`) REFERENCES `employees` (`id`)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+
+-- ============================================================
 -- PERFORMANCE INDEXES
 -- Derived from backend/scripts/add-performance-indexes.sql
 --
