@@ -135,3 +135,26 @@ CREATE INDEX `idx_emp_timein`
 -- Optimize employee listing ORDER BY created_at DESC
 CREATE INDEX `idx_created_at`
   ON `employees` (`created_at`);
+
+
+-- ============================================================
+-- 5. sync_source_map — Sync idempotency & source tracking
+--    Maps local dtr_entry.PK_entry → online attendance_logs.id.
+--    Provides crash-safe idempotency for the sync agent.
+--    Each source PK_entry maps to at most one attendance record.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS `sync_source_map` (
+  `id`               INT            NOT NULL AUTO_INCREMENT,
+  `source_pk_entry`  INT UNSIGNED   NOT NULL,
+  `online_log_id`    INT            NOT NULL,
+  `source_hash`      VARCHAR(64)             DEFAULT NULL,
+  `synced_at`        TIMESTAMP      NULL     DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_source_pk` (`source_pk_entry`),
+  KEY `idx_online_log` (`online_log_id`),
+  CONSTRAINT `fk_sync_attendance`
+    FOREIGN KEY (`online_log_id`) REFERENCES `attendance_logs` (`id`)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

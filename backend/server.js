@@ -22,7 +22,7 @@ app.set("trust proxy", 1);
 	    }
 	  },	  credentials: true,
 	  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-	  allowedHeaders: ["Content-Type", "X-CSRF-Token"],
+	  allowedHeaders: ["Content-Type", "X-CSRF-Token", "Authorization"],
 	  maxAge: 600,
 	};
 	
@@ -35,8 +35,15 @@ app.set("trust proxy", 1);
 	app.use(cookieParser());
 
 	// Security middleware (after cookieParser, before routes)
-	app.use(originCheck);
-	app.use(csrfProtection);
+	// Skip CSRF and origin checks for sync API (machine-to-machine, API key auth)
+	app.use((req, res, next) => {
+		if (req.path.startsWith("/api/sync")) return next();
+		return originCheck(req, res, next);
+	});
+	app.use((req, res, next) => {
+		if (req.path.startsWith("/api/sync")) return next();
+		return csrfProtection(req, res, next);
+	});
 
 	// 🔐 AUTH MIDDLEWARE
 	const verifyToken = require("./middleware/authMiddleware");
@@ -65,6 +72,10 @@ app.set("trust proxy", 1);
 	// DEPARTMENT ROUTES (PROTECTED)
 	const departmentRoutes = require("./routes/departmentRoutes");
 	app.use("/api/departments", departmentRoutes);
+
+	// SYNC ROUTES (API key auth — machine-to-machine, bypasses CSRF/CORS)
+	const { verifySyncKey } = require("./middleware/syncAuth");
+	app.use("/api/sync", verifySyncKey, require("./routes/syncRoutes"));
 
 	// ADMIN STATS (dedicated aggregate endpoint)
 	app.get("/api/admin/stats", verifyToken, requireRole("admin"), async (req, res) => {

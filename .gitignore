@@ -46,4 +46,12 @@ htmlcov/
 # Playwright generated artifacts
 playwright-report/
 test-results/
+
+# Sync agent runtime state (SQLite)
+backend/sync/sync_state.db
+backend/sync/sync_state.db-wal
+backend/sync/sync_state.db-shm
+backend/sync/sync_state_test.db
+backend/sync/sync_state_test.db-wal
+backend/sync/sync_state_test.db-shm
 ```
