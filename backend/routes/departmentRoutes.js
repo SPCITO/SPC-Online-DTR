@@ -51,7 +51,7 @@ router.get("/summary", verifyToken, requireRole("admin"), async (req, res) => {
     const { start: startOfDay, end: endOfDay } = manilaDayRange();
 
     const [rows] = await db.promise().query(
-      `SELECT d.FK_dept AS department_id,
+      `SELECT COALESCE(d.groupno, e.department_id) AS department_id,
               COUNT(DISTINCT e.id) AS total_employees,
               SUM(CASE WHEN al.time_out IS NULL AND al.id IS NOT NULL THEN 1 ELSE 0 END) AS active_count,
               SUM(CASE WHEN al.id IS NOT NULL AND TIME(al.time_in) > '08:30:00' THEN 1 ELSE 0 END) AS late_count
@@ -59,7 +59,7 @@ router.get("/summary", verifyToken, requireRole("admin"), async (req, res) => {
        LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
        LEFT JOIN attendance_logs al ON al.employee_db_id = e.id
          AND al.time_in >= ? AND al.time_in <= ?
-       GROUP BY d.FK_dept`,
+       GROUP BY COALESCE(d.groupno, e.department_id)`,
       [startOfDay, endOfDay]
     );
 
@@ -88,17 +88,17 @@ router.get("/:deptId/logs", verifyToken, requireRole("admin"), async (req, res) 
        FROM attendance_logs al
        JOIN employees e ON al.employee_db_id = e.id
        LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
-       WHERE d.groupno = ?`,
+       WHERE COALESCE(d.groupno, e.department_id) = ?`,
       [deptId]
     );
 
     const [rows] = await db.promise().query(
       `SELECT al.id, al.employee_db_id, al.time_in, al.time_out,
-              e.name, e.employee_id, e.role, d.groupno
+              e.name, e.employee_id, e.role, COALESCE(d.groupno, e.department_id) AS groupno
        FROM attendance_logs al
        JOIN employees e ON al.employee_db_id = e.id
        LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
-       WHERE d.groupno = ?
+       WHERE COALESCE(d.groupno, e.department_id) = ?
        ORDER BY al.time_in DESC, al.id DESC
        LIMIT ? OFFSET ?`,
       [deptId, limit, offset]
@@ -156,7 +156,8 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
 
     // 2. Fetch Data via MySQL JOIN (with optional deptId filter)
     let sql = `
-      SELECT al.time_in, al.time_out, e.name, e.employee_id, e.role, d.groupno
+      SELECT al.time_in, al.time_out, e.name, e.employee_id, e.role,
+             COALESCE(d.groupno, e.department_id) AS groupno
       FROM attendance_logs al
       JOIN employees e ON al.employee_db_id = e.id
       LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
@@ -165,7 +166,7 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
     const queryParams = [startDate, endDate];
 
     if (deptId) {
-      sql += ` AND d.groupno = ?`;
+      sql += ` AND COALESCE(d.groupno, e.department_id) = ?`;
       queryParams.push(parseInt(deptId));
     }
 

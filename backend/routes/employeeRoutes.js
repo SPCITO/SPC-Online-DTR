@@ -7,6 +7,7 @@ const crypto = require("crypto");
 const verifyToken = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
 const logSecurityEvent = require("../utils/securityLogger");
+const { getDepartmentById } = require("../utils/deptMapping");
 
 // ==========================
 // 🔐 GET ALL EMPLOYEES
@@ -63,12 +64,25 @@ router.get("/", verifyToken, requireRole("admin"), async (req, res) => {
 // ==========================
 router.post("/", verifyToken, requireRole("admin"), async (req, res) => {
   try {
-    let { name, username, employee_id, email, password, role } = req.body;
+    let { name, username, employee_id, email, password, role, department_id } = req.body;
     name = name?.trim();
     username = username?.trim();
-    employee_id = employee_id?.trim();
+    // Employee ID is optional for now (school IDs will be imported later);
+    // empty values are stored as NULL so the UNIQUE key never collides.
+    employee_id = employee_id?.trim() || null;
     email = email?.trim();
     role = role || 'employee';
+
+    // Department is optional (legacy rows may have none) but must be one of
+    // the real departments (1-4, see utils/deptMapping.js) when provided.
+    if (department_id !== undefined && department_id !== null && department_id !== "") {
+      department_id = Number(department_id);
+      if (!getDepartmentById(department_id)) {
+        return res.status(400).json({ message: "Invalid department." });
+      }
+    } else {
+      department_id = null;
+    }
 
     // Validate role against supported values
     const validRoles = ['admin', 'employee'];
@@ -76,8 +90,8 @@ router.post("/", verifyToken, requireRole("admin"), async (req, res) => {
       return res.status(400).json({ message: "Invalid role. Supported roles: admin, employee" });
     }
 
-    if (!name || !username || !employee_id || !email) {
-      return res.status(400).json({ message: "Name, Username, Employee ID, and Email are required." });
+    if (!name || !username || !email) {
+      return res.status(400).json({ message: "Name, Username, and Email are required." });
     }
 
     // Check if username is taken
@@ -104,8 +118,8 @@ router.post("/", verifyToken, requireRole("admin"), async (req, res) => {
     const hashed = await bcrypt.hash(finalPassword, 10);
 
     const [result] = await db.promise().query(
-      "INSERT INTO employees (name, username, employee_id, email, password, role, is_active, must_change_password) VALUES (?, ?, ?, ?, ?, ?, 1, TRUE)",
-      [name, username, employee_id, email, hashed, role]
+      "INSERT INTO employees (name, username, employee_id, email, password, role, department_id, is_active, must_change_password) VALUES (?, ?, ?, ?, ?, ?, ?, 1, TRUE)",
+      [name, username, employee_id, email, hashed, role, department_id]
     );
 
     return res.status(201).json({ message: "Employee created successfully", id: result.insertId });

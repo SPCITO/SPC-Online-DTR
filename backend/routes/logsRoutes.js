@@ -15,7 +15,8 @@ router.get("/", requireRole("admin"), async (req, res) => {
   try {
     let sql = `
       SELECT al.id, al.time_in, al.time_out, al.employee_db_id,
-             e.employee_id, e.role, d.fullname, d.groupno
+             e.employee_id, e.role, COALESCE(d.fullname, e.name) AS fullname,
+             COALESCE(d.groupno, e.department_id) AS groupno
       FROM attendance_logs al
       JOIN employees e ON al.employee_db_id = e.id
       LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
@@ -25,10 +26,10 @@ router.get("/", requireRole("admin"), async (req, res) => {
     if (search && search.trim() !== "") {
       const searchNum = parseInt(search);
       if (!isNaN(searchNum)) {
-        sql += ` WHERE d.fullname LIKE ? OR al.employee_db_id = ?`;
+        sql += ` WHERE COALESCE(d.fullname, e.name) LIKE ? OR al.employee_db_id = ?`;
         params.push(`%${search}%`, searchNum);
       } else {
-        sql += ` WHERE d.fullname LIKE ?`;
+        sql += ` WHERE COALESCE(d.fullname, e.name) LIKE ?`;
         params.push(`%${search}%`);
       }
     }
@@ -80,7 +81,8 @@ router.get("/me/:employee_db_id", async (req, res) => {
     );
 
     const [rows] = await db.promise().query(
-      `SELECT al.id, al.time_in, al.time_out, d.fullname, d.groupno
+      `SELECT al.id, al.time_in, al.time_out, COALESCE(d.fullname, e.name) AS fullname,
+              COALESCE(d.groupno, e.department_id) AS groupno
        FROM attendance_logs al
        JOIN employees e ON al.employee_db_id = e.id
        LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user

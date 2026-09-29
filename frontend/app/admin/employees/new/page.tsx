@@ -9,6 +9,7 @@ import {
   UserPlus,
   Mail,
   BadgeCent,
+  Building2,
   Lock,
   ShieldCheck,
   User,
@@ -29,6 +30,7 @@ export default function AddEmployeePage() {
     email: "",
     password: "",
     role: "employee",
+    department_id: "",
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -161,16 +163,15 @@ export default function AddEmployeePage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-gray-500 ml-1">Employee ID</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-gray-500 ml-1">Employee ID (optional)</label>
                   <div className="relative">
                     <BadgeCent className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                     <input
-                      required
                       name="employee_id"
                       value={formData.employee_id}
                       onChange={handleChange}
                       type="text"
-                      placeholder="EMP-001"
+                      placeholder="Optional — school ID"
                       className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium text-gray-900 placeholder-gray-400"
                     />
                   </div>
@@ -222,6 +223,31 @@ export default function AddEmployeePage() {
                     >
                       <option value="employee">Employee</option>
                       <option value="admin">Admin</option>
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-gray-500 ml-1">Department</label>
+                  <div className="relative">
+                    <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <select
+                      required
+                      name="department_id"
+                      value={formData.department_id}
+                      onChange={handleChange}
+                      className="w-full pl-12 pr-10 py-3.5 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium text-gray-900 appearance-none cursor-pointer"
+                    >
+                      <option value="" disabled>Select department</option>
+                      <option value="1">Basic Education</option>
+                      <option value="2">Collegiate</option>
+                      <option value="3">Administrative / Personnel</option>
+                      <option value="4">Student Assistant</option>
                     </select>
                     <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">

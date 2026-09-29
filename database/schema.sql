@@ -2,7 +2,8 @@
 -- SPC Online DTR — Production MySQL Schema
 -- Generated: 2025-09-15
 -- Updated: 2026-09-17 (L.8 — school DB migration readiness)
--- Application: Next.js (Vercel) → Express (Render) → MySQL
+-- Application: Next.js (frontend) → Express (API) → MySQL
+--   (production: spcwebhost containers -> school live MySQL 192.168.3.150 / sysa_dtr)
 --
 -- This schema defines the 3 application tables:
 --   1. employees       — Application user accounts, auth, sessions
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS `employees` (
   `email`                VARCHAR(100)          DEFAULT NULL,
   `password`             VARCHAR(255)          DEFAULT NULL,
   `role`                 VARCHAR(20)           DEFAULT 'employee',
+  `department_id`        TINYINT UNSIGNED      DEFAULT NULL,
   `active_session`       VARCHAR(255)          DEFAULT NULL,
   `session_expires_at`   TIMESTAMP    NULL     DEFAULT NULL,
   `dtr_user_id`          INT UNSIGNED          DEFAULT NULL,
