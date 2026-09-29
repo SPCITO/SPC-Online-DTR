@@ -15,9 +15,12 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // If already authenticated, redirect to dashboard
+  // If already authenticated, redirect onward. Users with a pending forced
+  // password change are intentionally NOT auto-redirected — they get the
+  // login form again (re-enter credentials / switch account) instead of
+  // being tunneled straight into the change-password page.
   useEffect(() => {
-    if (!authLoading && user) {
+    if (!authLoading && user && !user.mustChangePassword) {
       router.replace("/dashboard");
     }
   }, [authLoading, user, router]);
@@ -34,8 +37,10 @@ export default function LoginPage() {
     );
   }
 
-  // Don't render login form if already authenticated (prevents flash)
-  if (user) {
+  // Don't render login form if already authenticated (prevents flash) —
+  // unless a forced password change is pending, where the form doubles as
+  // the escape hatch back to credentials.
+  if (user && !user.mustChangePassword) {
     return null;
   }
 
@@ -97,7 +102,7 @@ export default function LoginPage() {
 
       {/* BACK BUTTON */}
       <button
-        onClick={() => (window.location.href = "/")}
+        onClick={() => router.push("/")}
         className="
           absolute top-6 left-6 z-20
 
@@ -170,7 +175,7 @@ export default function LoginPage() {
             "
           >
             <img
-              src="/spc logo.png"
+              src={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/spc logo.png`}
               alt="SPC Logo"
               className="w-12 h-12 object-contain"
             />

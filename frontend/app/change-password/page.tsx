@@ -83,6 +83,18 @@ function ChangePasswordContent() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await api.logout();
+    } catch (err) {
+      console.warn("Logout request failed");
+    }
+
+    // Full-page redirect resets auth context/CSRF state (same pattern as
+    // the dashboard logout) — lands on the credential form.
+    window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/login`;
+  };
+
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#070b14] text-gray-400">
@@ -216,6 +228,14 @@ function ChangePasswordContent() {
             {loading ? "Updating..." : "Update Password"}
           </button>
 
+          {/* LOGOUT — escape hatch back to the credential form (switch account) */}
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full mt-2 py-2.5 rounded-xl text-sm text-gray-400 hover:text-white transition"
+          >
+            Log out
+          </button>
         </div>
       </div>
     </div>
