@@ -7,6 +7,14 @@ const rateLimit = require("express-rate-limit");
 const verifyToken = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole"); 
 const { getAllDepartments } = require("../utils/deptMapping");
+const {
+  philippineDateStr,
+  manilaDayRange,
+  manilaWeekRange,
+  manilaMonthRange,
+  manilaDateLabel,
+  manilaTimeLabel,
+} = require("../utils/phTime");
 
 // Rate limiter for exports: 10 per hour per authenticated user
 const exportLimiter = rateLimit({
@@ -39,9 +47,8 @@ router.get("/", verifyToken, (req, res) => {
 // =====================================
 router.get("/summary", verifyToken, requireRole("admin"), async (req, res) => {
   try {
-    const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    // M.39 H1b: Manila calendar-day window (previously UTC-calendar bounds).
+    const { start: startOfDay, end: endOfDay } = manilaDayRange();
 
     const [rows] = await db.promise().query(
       `SELECT d.FK_dept AS department_id,
@@ -134,23 +141,17 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
       return res.status(400).json({ message: "Invalid export type. Use 'all' or 'department'." });
     }
 
-    // 1. Calculate Date Range (without mutating `now`)
-    const now = new Date();
+    // 1. Calculate Date Range — M.39 H1b: Manila calendar windows.
+    // Week convention preserved: Monday..Sunday (same rule as before).
     let startDate, endDate;
-    
+
     if (dateRange === 'today') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      ({ start: startDate, end: endDate } = manilaDayRange());
     } else if (dateRange === 'week') {
-      const dayOfWeek = now.getDay();
-      const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); 
-      startDate = new Date(now.getFullYear(), now.getMonth(), diff);
-      startDate.setHours(0, 0, 0, 0);
-      endDate = new Date(now.getFullYear(), now.getMonth(), diff + 6);
-      endDate.setHours(23, 59, 59, 999);
+      ({ start: startDate, end: endDate } = manilaWeekRange());
     } else { // month
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      const [phtYear, phtMonth] = philippineDateStr().split("-").map(Number);
+      ({ start: startDate, end: endDate } = manilaMonthRange(phtYear, phtMonth));
     }
 
     // 2. Fetch Data via MySQL JOIN (with optional deptId filter)
@@ -243,9 +244,9 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
           employee_id: r.employee_id,
           name: r.name,
           role: r.role,
-          date: new Date(r.time_in).toLocaleDateString(),
-          time_in: new Date(r.time_in).toLocaleTimeString(),
-          time_out: r.time_out ? new Date(r.time_out).toLocaleTimeString() : "Active",
+          date: manilaDateLabel(r.time_in),
+          time_in: manilaTimeLabel(r.time_in),
+          time_out: r.time_out ? manilaTimeLabel(r.time_out) : "Active",
           duration: duration,
           status: isLate ? "Late" : "On Time"
         });
@@ -324,10 +325,10 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
         const isLate = phtHour > 8 || (phtHour === 8 && phtMinute > 30);
         
         breakdownSheet.addRow({
-          date: new Date(r.time_in).toLocaleDateString(),
+          date: manilaDateLabel(r.time_in),
           name: r.name,
-          time_in: new Date(r.time_in).toLocaleTimeString(),
-          time_out: r.time_out ? new Date(r.time_out).toLocaleTimeString() : "-",
+          time_in: manilaTimeLabel(r.time_in),
+          time_out: r.time_out ? manilaTimeLabel(r.time_out) : "-",
           duration: `${duration} mins`,
           remark: isLate ? "LATE" : "-"
         });
@@ -341,7 +342,7 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
     );
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="DTR_Report_${dateRange}_${new Date().toISOString().slice(0,10)}.xlsx"`
+      `attachment; filename="DTR_Report_${dateRange}_${philippineDateStr()}.xlsx"`
     );
 
     await workbook.xlsx.write(res);

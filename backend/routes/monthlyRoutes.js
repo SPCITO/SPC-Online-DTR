@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
+const { philippineDateStr, manilaMonthRange } = require("../utils/phTime");
 
 // GET MONTHLY LOGS
 router.get("/:employee_db_id/:year/:month", async (req, res) => {
@@ -26,8 +27,10 @@ router.get("/:employee_db_id/:year/:month", async (req, res) => {
   }
 
   try {
-    const startDate = new Date(yr, mo - 1, 1);
-    const endDate = new Date(yr, mo, 0, 23, 59, 59);
+    // M.39 H1b: Manila calendar-month window ΓÇö rolls at 00:00 Asia/Manila
+    // (previously UTC-calendar bounds rolled at 08:00 PHT). Bounds stay
+    // bound as Date params; stored timestamps and db.js "+08:00" are untouched.
+    const { start: startDate, end: endDate } = manilaMonthRange(yr, mo);
 
     const [results] = await db.promise().query(
       `SELECT id, time_in, time_out FROM attendance_logs
@@ -41,7 +44,9 @@ router.get("/:employee_db_id/:year/:month", async (req, res) => {
     const grouped = {};
 
     (results || []).forEach((log) => {
-      const date = new Date(log.time_in).toISOString().split("T")[0];
+      // M.39 H1b: bucket by Manila calendar date (previously the UTC date
+      // via toISOString() misfiled pre-08:00 PHT rows to the previous day).
+      const date = philippineDateStr(new Date(log.time_in));
 
       if (!grouped[date]) {
         grouped[date] = {

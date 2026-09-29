@@ -4,6 +4,7 @@ const db = require("../config/db");
 const rateLimit = require("express-rate-limit");
 
 const logSecurityEvent = require("../utils/securityLogger");
+const { manilaDayRange } = require("../utils/phTime");
 
 // Rate limiter for DTR: 10 requests per hour per authenticated user
 // Keyed by user ID, not IP — safe for shared school Wi-Fi
@@ -24,8 +25,11 @@ router.post("/time-in", dtrLimiter, async (req, res) => {
   const now = new Date();
 
   try {
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    // M.38 H1: Manila calendar-day window — rolls over at 00:00 Asia/Manila
+    // (the previous UTC-calendar math rolled over at 08:00 PHT). Stored
+    // timestamps are unaffected: the INSERT below still uses `now`, and the
+    // mysql2 driver serializes with timezone "+08:00" (config/db.js).
+    const { startOfDay, endOfDay } = manilaDayRange(now);
 
     // Use explicit transaction with SELECT...FOR UPDATE to prevent race conditions.
     // The FOR UPDATE acquires an exclusive lock on matching rows (or gap),

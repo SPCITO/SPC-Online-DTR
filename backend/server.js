@@ -3,6 +3,7 @@ const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const { ALLOWED_ORIGINS } = require("./config/origins");
 const { csrfProtection, originCheck } = require("./middleware/csrfProtection");
+const { manilaDayRange } = require("./utils/phTime");
 
 const app = express();
 
@@ -81,9 +82,9 @@ app.set("trust proxy", 1);
 	app.get("/api/admin/stats", verifyToken, requireRole("admin"), async (req, res) => {
 	  try {
 		const db = require("./config/db");
-		const now = new Date();
-		const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-		const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+		// M.41 H1c: Manila calendar-day window (rolls over at 00:00 Asia/Manila,
+		// not the container-UTC 08:00 as before). Helper reused from utils/phTime.
+		const { start: startOfDay, end: endOfDay } = manilaDayRange();
 
 		// Run all 4 independent COUNT queries in parallel
 		const [
