@@ -72,8 +72,10 @@ function ChangePasswordContent() {
 
       toast.success("Password updated successfully");
 
-      // Session invalidated server-side (cookies cleared by backend)
-      router.replace("/login");
+      // Session invalidated server-side (cookies cleared by backend).
+      // Full-page redirect so the auth context resets — otherwise the
+      // login page bounces the stale user to /dashboard and back (401s).
+      window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/login`;
     } catch (err: any) {
       toast.error(err?.message || "Failed to update password");
     } finally {
@@ -123,7 +125,8 @@ function ChangePasswordContent() {
               placeholder="Current password"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full pl-10 pr-10 py-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none"
+              style={{ color: "#f8fafc" }}
+              className="w-full pl-10 pr-10 py-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none text-white placeholder:text-gray-400!"
             />
 
             <button
@@ -144,7 +147,8 @@ function ChangePasswordContent() {
               placeholder="New password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full pl-10 pr-10 py-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none"
+              style={{ color: "#f8fafc" }}
+              className="w-full pl-10 pr-10 py-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none text-white placeholder:text-gray-400!"
             />
 
             <button
@@ -190,7 +194,8 @@ function ChangePasswordContent() {
               placeholder="Confirm password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full pl-10 pr-10 py-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none"
+              style={{ color: "#f8fafc" }}
+              className="w-full pl-10 pr-10 py-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none text-white placeholder:text-gray-400!"
             />
 
             <button
