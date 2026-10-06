@@ -109,7 +109,7 @@ function UserLogsContent() {
               {/* BACK BUTTON */}
               <motion.button
                 whileTap={{ scale: 0.96 }}
-                onClick={() => (window.location.href = "/dashboard")}
+                onClick={() => router.push("/dashboard")}
                 className="
                   flex items-center justify-center gap-2
 

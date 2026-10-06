@@ -134,6 +134,14 @@ function MonthlyContent() {
     if (!record)
       return "bg-slate-100 text-slate-400 border-slate-200";
 
+    // Blank expired record ("No Time Out") — payroll model
+    if (record.no_time_out)
+      return "bg-rose-100 text-rose-700 border-rose-200";
+
+    // Auto-closed (forgotten Time Out) — visibly distinct from a real day
+    if (record.pending)
+      return "bg-orange-100 text-orange-700 border-orange-200";
+
     if (isLate(record.first_in))
       return "bg-yellow-100 text-yellow-700 border-yellow-200";
 
@@ -195,7 +203,7 @@ function MonthlyContent() {
 
               <motion.button
                 whileTap={{ scale: 0.96 }}
-                onClick={() => (window.location.href = "/dashboard")}
+                onClick={() => router.push("/dashboard")}
                 className="
                   flex items-center justify-center gap-2
 
@@ -543,6 +551,16 @@ function MonthlyContent() {
                 Absent
               </div>
 
+              <div className="flex items-center gap-2 text-slate-700">
+                <span className="w-3 h-3 rounded-full bg-orange-400" />
+                Auto-closed (pending)
+              </div>
+
+              <div className="flex items-center gap-2 text-slate-700">
+                <span className="w-3 h-3 rounded-full bg-rose-400" />
+                No Time Out
+              </div>
+
             </div>
 
           </motion.div>
@@ -599,7 +617,7 @@ function MonthlyContent() {
                     </p>
 
                     <h3 className="mt-2 text-xl font-black text-slate-900">
-                      {selectedDay.hours}
+                      {selectedDay.no_time_out ? "—" : selectedDay.pending ? "Pending" : selectedDay.hours}
                     </h3>
                   </div>
 
@@ -618,6 +636,15 @@ function MonthlyContent() {
                   <div className="rounded-2xl bg-slate-50 p-5">
                     <p className="text-slate-400 text-xs uppercase tracking-[0.16em]">
                       Time Out
+                      {selectedDay.status === "NO TIME-OUT" && (
+                        <span className="ml-2 text-rose-500">(No Time Out)</span>
+                      )}
+                      {selectedDay.status === "AUTO" && (
+                        <span className="ml-2 text-orange-500">(Auto-closed)</span>
+                      )}
+                      {selectedDay.status === "ADMIN-CORRECTED" && (
+                        <span className="ml-2 text-emerald-600">(Corrected)</span>
+                      )}
                     </p>
 
                     <h3 className="mt-2 text-xl font-black text-slate-900">
@@ -625,6 +652,8 @@ function MonthlyContent() {
                         ? new Date(
                             selectedDay.last_out
                           ).toLocaleTimeString()
+                        : selectedDay.no_time_out
+                        ? "No Time Out"
                         : "—"}
                     </h3>
                   </div>

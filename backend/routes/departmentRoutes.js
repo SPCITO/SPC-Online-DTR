@@ -12,9 +12,11 @@ const {
   manilaDayRange,
   manilaWeekRange,
   manilaMonthRange,
+  manilaRangeFromQuery,
   manilaDateLabel,
   manilaTimeLabel,
 } = require("../utils/phTime");
+const { rowCredit, closedByLabel } = require("../utils/attendanceCredit");
 
 // Rate limiter for exports: 10 per hour per authenticated user
 const exportLimiter = rateLimit({
@@ -77,10 +79,15 @@ router.get("/:deptId/logs", verifyToken, requireRole("admin"), async (req, res) 
   try {
     const deptId = Number(req.params.deptId);
 
-    // Pagination with safe defaults and limits
+    // Payroll-grade loading: server-side date window + pagination so every
+    // historical day is retrievable (the old fixed 50-row window hid older
+    // records entirely).
     let page = Math.max(1, parseInt(req.query.page) || 1);
-    let limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    let limit = Math.min(1000, Math.max(1, parseInt(req.query.limit) || 200));
     const offset = (page - 1) * limit;
+    const range = manilaRangeFromQuery(req.query);
+    const rangeClause = range ? " AND al.time_in >= ? AND al.time_in <= ?" : "";
+    const rangeParams = range ? [range.start, range.end] : [];
 
     // Get total count
     const [[{ total }]] = await db.promise().query(
@@ -88,20 +95,20 @@ router.get("/:deptId/logs", verifyToken, requireRole("admin"), async (req, res) 
        FROM attendance_logs al
        JOIN employees e ON al.employee_db_id = e.id
        LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
-       WHERE COALESCE(d.groupno, e.department_id) = ?`,
-      [deptId]
+       WHERE COALESCE(d.groupno, e.department_id) = ?${rangeClause}`,
+      [deptId, ...rangeParams]
     );
 
     const [rows] = await db.promise().query(
-      `SELECT al.id, al.employee_db_id, al.time_in, al.time_out,
+      `SELECT al.id, al.employee_db_id, al.time_in, al.time_out, al.closed_by,
               e.name, e.employee_id, e.role, COALESCE(d.groupno, e.department_id) AS groupno
        FROM attendance_logs al
        JOIN employees e ON al.employee_db_id = e.id
        LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
-       WHERE COALESCE(d.groupno, e.department_id) = ?
+       WHERE COALESCE(d.groupno, e.department_id) = ?${rangeClause}
        ORDER BY al.time_in DESC, al.id DESC
        LIMIT ? OFFSET ?`,
-      [deptId, limit, offset]
+      [deptId, ...rangeParams, limit, offset]
     );
 
     const logs = (rows || []).map(row => ({
@@ -113,6 +120,11 @@ router.get("/:deptId/logs", verifyToken, requireRole("admin"), async (req, res) 
       department_id: row.groupno,
       time_in: row.time_in,
       time_out: row.time_out,
+      // USER / AUTO / ADMIN-CORRECTED — or OPEN / NO TIME-OUT (blank expired)
+      closed_by: row.closed_by,
+      status: rowCredit({ time_in: row.time_in, time_out: row.time_out, closed_by: row.closed_by }).status,
+      pending: rowCredit({ time_in: row.time_in, time_out: row.time_out, closed_by: row.closed_by }).pending,
+      no_time_out: rowCredit({ time_in: row.time_in, time_out: row.time_out, closed_by: row.closed_by }).expired,
     }));
 
     res.json({
@@ -121,6 +133,7 @@ router.get("/:deptId/logs", verifyToken, requireRole("admin"), async (req, res) 
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+      hasMore: offset + (rows || []).length < total,
     });
 
   } catch (err) {
@@ -143,9 +156,12 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
 
     // 1. Calculate Date Range — M.39 H1b: Manila calendar windows.
     // Week convention preserved: Monday..Sunday (same rule as before).
+    // Explicit from/to days (payroll periods) override dateRange.
     let startDate, endDate;
-
-    if (dateRange === 'today') {
+    const explicit = manilaRangeFromQuery({ from: req.query.from, to: req.query.to });
+    if (explicit) {
+      ({ start: startDate, end: endDate } = explicit);
+    } else if (dateRange === 'today') {
       ({ start: startDate, end: endDate } = manilaDayRange());
     } else if (dateRange === 'week') {
       ({ start: startDate, end: endDate } = manilaWeekRange());
@@ -156,7 +172,7 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
 
     // 2. Fetch Data via MySQL JOIN (with optional deptId filter)
     let sql = `
-      SELECT al.time_in, al.time_out, e.name, e.employee_id, e.role,
+      SELECT al.time_in, al.time_out, al.closed_by, e.name, e.employee_id, e.role,
              COALESCE(d.groupno, e.department_id) AS groupno
       FROM attendance_logs al
       JOIN employees e ON al.employee_db_id = e.id
@@ -193,16 +209,22 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
         { header: "Department", key: "dept", width: 25 },
         { header: "Total Logs", key: "total", width: 15 },
         { header: "Total Late", key: "late", width: 15 },
-        { header: "Avg Duration (mins)", key: "avg", width: 20 }
+        { header: "Avg Duration (mins)", key: "avg", width: 20 },
+        { header: "Pending Rows", key: "pending", width: 15 }
       ];
       
-      const stats = { "All Staff": { total: 0, late: 0, durations: [] } };
+      const stats = { "All Staff": { total: 0, late: 0, durations: [], pending: 0 } };
       
       (rows || []).forEach(r => {
         stats["All Staff"].total++;
-        const duration = r.time_out ? 
-          (new Date(r.time_out) - new Date(r.time_in)) / 1000 / 60 : 0;
-        stats["All Staff"].durations.push(duration);
+        // Policy-aware credit: auto-closed rows pending correction contribute
+        // no duration to the average and are counted in "Pending Rows".
+        const credit = rowCredit(r);
+        if (credit.pending) {
+          stats["All Staff"].pending++;
+        } else if (credit.minutes !== null) {
+          stats["All Staff"].durations.push(credit.minutes);
+        }
         
         const timeIn = new Date(r.time_in);
         const phtHour = (timeIn.getUTCHours() + 8) % 24;
@@ -215,7 +237,7 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
       Object.keys(stats).forEach(dept => {
         const s = stats[dept];
         const avg = s.durations.length ? (s.durations.reduce((a,b)=>a+b,0)/s.durations.length).toFixed(1) : 0;
-        summarySheet.addRow({ dept, total: s.total, late: s.late, avg });
+        summarySheet.addRow({ dept, total: s.total, late: s.late, avg, pending: s.pending });
       });
 
       summarySheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
@@ -230,12 +252,19 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
         { header: "Time In", key: "time_in", width: 15 },
         { header: "Time Out", key: "time_out", width: 15 },
         { header: "Duration (m)", key: "duration", width: 15 },
-        { header: "Status", key: "status", width: 15 }
+        { header: "Status", key: "status", width: 15 },
+        { header: "Closed By", key: "closed_by", width: 18 }
       ];
 
       (rows || []).forEach(r => {
-        const duration = r.time_out ? 
-          Math.round((new Date(r.time_out) - new Date(r.time_in)) / 1000 / 60) : 0;
+        const credit = rowCredit(r);
+        const duration = credit.expired
+          ? "—"
+          : credit.pending
+          ? "PENDING"
+          : credit.minutes !== null
+          ? credit.minutes
+          : 0;
         const timeIn = new Date(r.time_in);
         const phtHour = (timeIn.getUTCHours() + 8) % 24;
         const phtMinute = timeIn.getUTCMinutes();
@@ -247,9 +276,10 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
           role: r.role,
           date: manilaDateLabel(r.time_in),
           time_in: manilaTimeLabel(r.time_in),
-          time_out: r.time_out ? manilaTimeLabel(r.time_out) : "Active",
+          time_out: r.time_out ? manilaTimeLabel(r.time_out) : credit.expired ? "NO TIME-OUT" : "Active",
           duration: duration,
-          status: isLate ? "Late" : "On Time"
+          status: isLate ? "Late" : "On Time",
+          closed_by: r.time_out ? closedByLabel(r.closed_by) : credit.expired ? "NO TIME-OUT" : "—"
         });
       });
       
@@ -269,7 +299,8 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
         { header: "Name", key: "name", width: 25 },
         { header: "Days Present", key: "days", width: 15 },
         { header: "Total Hours", key: "hours", width: 15 },
-        { header: "Times Late", key: "late", width: 15 }
+        { header: "Times Late", key: "late", width: 15 },
+        { header: "Pending Days", key: "pending", width: 15 }
       ];
 
       const empStats = {};
@@ -281,13 +312,19 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
             name: r.name, 
             days: 0, 
             hours: 0, 
-            late: 0 
+            late: 0,
+            pending: 0
           };
         }
         empStats[empId].days++;
-        const duration = r.time_out ? 
-          (new Date(r.time_out) - new Date(r.time_in)) / 1000 / 60 / 60 : 0;
-        empStats[empId].hours += duration;
+        // Policy-aware credit: pending rows contribute no hours (counted
+        // separately) so exports never fabricate worked time.
+        const credit = rowCredit(r);
+        if (credit.pending) {
+          empStats[empId].pending++;
+        } else if (credit.minutes !== null) {
+          empStats[empId].hours += credit.minutes / 60;
+        }
         
         const timeIn = new Date(r.time_in);
         const phtHour = (timeIn.getUTCHours() + 8) % 24;
@@ -303,7 +340,8 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
           name: stat.name,
           days: stat.days,
           hours: stat.hours.toFixed(2),
-          late: stat.late
+          late: stat.late,
+          pending: stat.pending
         });
       });
 
@@ -314,12 +352,19 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
         { header: "Time In", key: "time_in", width: 15 },
         { header: "Time Out", key: "time_out", width: 15 },
         { header: "Duration", key: "duration", width: 12 },
-        { header: "Remark", key: "remark", width: 15 }
+        { header: "Remark", key: "remark", width: 15 },
+        { header: "Closed By", key: "closed_by", width: 18 }
       ];
 
       (rows || []).forEach(r => {
-        const duration = r.time_out ? 
-          Math.round((new Date(r.time_out) - new Date(r.time_in)) / 1000 / 60) : 0;
+        const credit = rowCredit(r);
+        const duration = credit.expired
+          ? "—"
+          : credit.pending
+          ? "PENDING"
+          : credit.minutes !== null
+          ? `${credit.minutes} mins`
+          : "0 mins";
         const timeIn = new Date(r.time_in);
         const phtHour = (timeIn.getUTCHours() + 8) % 24;
         const phtMinute = timeIn.getUTCMinutes();
@@ -329,9 +374,10 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
           date: manilaDateLabel(r.time_in),
           name: r.name,
           time_in: manilaTimeLabel(r.time_in),
-          time_out: r.time_out ? manilaTimeLabel(r.time_out) : "-",
-          duration: `${duration} mins`,
-          remark: isLate ? "LATE" : "-"
+          time_out: r.time_out ? manilaTimeLabel(r.time_out) : credit.expired ? "NO TIME-OUT" : "-",
+          duration: duration,
+          remark: isLate ? "LATE" : "-",
+          closed_by: r.time_out ? closedByLabel(r.closed_by) : credit.expired ? "NO TIME-OUT" : "—"
         });
       });
     }

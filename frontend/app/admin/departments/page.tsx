@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import ExcelJS from "exceljs";
+import AttendanceCorrectionModal from "@/components/AttendanceCorrectionModal";
 
 import {
   Search,
@@ -41,12 +42,18 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false); // New state for export loading
 
+  // M.39: admin Time Out correction control (AUTO / PENDING records)
+  const [correctionLog, setCorrectionLog] = useState<any | null>(null);
+
   const [filter, setFilter] = useState<FilterType>("today");
   const [search, setSearch] = useState("");
+  // Payroll date window (overrides the Today/Week/Month filter when set)
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
 
   // Pagination State
   const [page, setPage] = useState(1);
-  const [limit] = useState(5); 
+  const [limit] = useState(50);
   const [hasMore, setHasMore] = useState(true);
   const [fetchingMore, setFetchingMore] = useState(false);
 
@@ -74,7 +81,11 @@ export default function AdminDashboardPage() {
       }
 
       try {
-        const data = await api.getLogs(page, limit, debouncedSearch);
+        const data = await api.getLogs(page, limit, debouncedSearch, {
+          dateRange: from || to ? undefined : filter,
+          from: from || undefined,
+          to: to || undefined,
+        });
         const newLogs: any[] = Array.isArray(data) ? data : [];
 
         if (newLogs.length === 0 || newLogs.length < limit) {
@@ -101,7 +112,7 @@ export default function AdminDashboardPage() {
     };
     fetchLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, page, limit]);
+  }, [debouncedSearch, page, limit, filter, from, to]);
 
   const handleLoadMore = () => {
     if (!fetchingMore && hasMore) {
@@ -109,28 +120,8 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // FILTERED LOGS (Client-side filtering by time period only)
-  const filteredLogs = useMemo(() => {
-    const now = new Date();
-    return logs.filter((log) => {
-      const timeIn = new Date(log.time_in);
-
-      if (filter === "today") {
-        return timeIn.toDateString() === now.toDateString();
-      }
-      if (filter === "week") {
-        const diff = now.getTime() - timeIn.getTime();
-        return diff <= 7 * 24 * 60 * 60 * 1000;
-      }
-      if (filter === "month") {
-        return (
-          timeIn.getMonth() === now.getMonth() &&
-          timeIn.getFullYear() === now.getFullYear()
-        );
-      }
-      return true;
-    });
-  }, [logs, filter]);
+  // The date window is applied server-side — display exactly what was loaded.
+  const filteredLogs = logs;
 
   // HELPERS
   const getStatus = (log: any) => {
@@ -143,10 +134,23 @@ export default function AdminDashboardPage() {
 
   const getWorkHours = (log: any) => {
     if (!log.time_out) return "--";
+    // AUTO rows awaiting correction carry NO credited hours (Policy A).
+    if (log.pending) return "Pending";
     const diff = new Date(log.time_out).getTime() - new Date(log.time_in).getTime();
     const hrs = Math.floor(diff / 3600000);
     const mins = Math.floor((diff % 3600000) / 60000);
     return `${hrs}h ${mins}m`;
+  };
+
+  // Closure source label — USER / AUTO / ADMIN-CORRECTED / NO TIME-OUT
+  const closureLabel = (log: any) => {
+    if (!log.time_out) return log.no_time_out ? "NO TIME-OUT" : "OPEN";
+    if (log.status === "AUTO") return log.pending ? "AUTO / PENDING CORRECTION" : "AUTO";
+    return log.status || "USER";
+  };
+
+  const handleCorrected = (updated: any) => {
+    setLogs((prev) => prev.map((l) => (l.id === updated.id ? { ...l, ...updated } : l)));
   };
 
   const getDepartmentStats = useMemo(() => {
@@ -175,7 +179,7 @@ export default function AdminDashboardPage() {
     // Header Row
     const headerRow = worksheet.addRow([
       "Employee ID", "Name", "Department", "Role", 
-      "Time In", "Time Out", "Status", "Work Hours"
+      "Time In", "Time Out", "Status", "Work Hours", "Closure"
     ]);
     
     headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
@@ -190,7 +194,7 @@ export default function AdminDashboardPage() {
     // Column Widths
     worksheet.columns = [
       { width: 15 }, { width: 25 }, { width: 20 }, { width: 15 },
-      { width: 22 }, { width: 22 }, { width: 12 }, { width: 12 }
+      { width: 22 }, { width: 22 }, { width: 12 }, { width: 12 }, { width: 24 }
     ];
   };
 
@@ -210,6 +214,7 @@ export default function AdminDashboardPage() {
         log.time_out ? new Date(log.time_out).toLocaleString() : "",
         status,
         getWorkHours(log),
+        closureLabel(log),
       ]);
 
       // Style Status Cell
@@ -224,7 +229,29 @@ export default function AdminDashboardPage() {
     });
   };
 
+  // Server-side export: complete data for the selected window — payroll
+  // basis must never be limited by what the table has loaded.
+  const exportWindowLabel = () =>
+    from || to ? `${from || "start"}_to_${to || "today"}` : filter.toUpperCase();
+
   const handleExportAll = async () => {
+    setExporting(true);
+    try {
+      await api.exportDepartmentLogs({
+        dateRange: from || to ? undefined : filter,
+        from: from || undefined,
+        to: to || undefined,
+        label: `ALL_DEPARTMENTS_${exportWindowLabel()}.xlsx`,
+      });
+    } catch (error) {
+      console.error("Export failed:", error);
+      alert("Failed to generate report.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportAllLegacy = async () => {
     setExporting(true);
     try {
       const workbook = new ExcelJS.Workbook();
@@ -281,6 +308,24 @@ export default function AdminDashboardPage() {
   };
 
   const handleExportDepartment = async (deptId: number, deptName: string) => {
+    setExporting(true);
+    try {
+      await api.exportDepartmentLogs({
+        deptId,
+        dateRange: from || to ? undefined : filter,
+        from: from || undefined,
+        to: to || undefined,
+        label: `${deptName.replace(/\s+/g, "_")}_${exportWindowLabel()}.xlsx`,
+      });
+    } catch (error) {
+      console.error("Export failed:", error);
+      alert("Failed to generate report.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportDepartmentLegacy = async (deptId: number, deptName: string) => {
     setExporting(true);
     try {
       const workbook = new ExcelJS.Workbook();
@@ -443,9 +488,14 @@ export default function AdminDashboardPage() {
               {(["today", "week", "month"] as FilterType[]).map((f) => (
                 <button
                   key={f}
-                  onClick={() => setFilter(f)}
+                  onClick={() => {
+                    setFilter(f);
+                    setFrom("");
+                    setTo("");
+                    setPage(1);
+                  }}
                   className={`px-4 py-3 rounded-xl font-bold text-sm transition-all ${
-                    filter === f
+                    filter === f && !from && !to
                       ? "bg-emerald-600 text-white shadow-lg shadow-emerald-200"
                       : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
                   }`}
@@ -453,6 +503,28 @@ export default function AdminDashboardPage() {
                   {f.charAt(0).toUpperCase() + f.slice(1)}
                 </button>
               ))}
+
+              {/* Payroll period window (e.g. semi-monthly 1-15 / 16-31) */}
+              <input
+                type="date"
+                value={from}
+                onChange={(e) => {
+                  setFrom(e.target.value);
+                  setPage(1);
+                }}
+                className="px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-900"
+                title="From date (overrides the filter buttons)"
+              />
+              <input
+                type="date"
+                value={to}
+                onChange={(e) => {
+                  setTo(e.target.value);
+                  setPage(1);
+                }}
+                className="px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-900"
+                title="To date (overrides the filter buttons)"
+              />
 
               <div className="h-8 w-px bg-gray-200 mx-1 hidden lg:block" />
 
@@ -478,12 +550,14 @@ export default function AdminDashboardPage() {
                   <th className="p-5 text-left">Time Out</th>
                   <th className="p-5 text-left">Work Hours</th>
                   <th className="p-5 text-left">Status</th>
+                  <th className="p-5 text-left">Closure</th>
+                  <th className="p-5 text-left">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {loading && page === 1 ? (
                   <tr>
-                    <td colSpan={6} className="p-12 text-center">
+                    <td colSpan={8} className="p-12 text-center">
                       <Loader2 className="w-8 h-8 animate-spin text-emerald-600 mx-auto" />
                       <p className="text-gray-500 mt-3 font-medium">Loading logs...</p>
                     </td>
@@ -507,12 +581,45 @@ export default function AdminDashboardPage() {
                             {status}
                           </span>
                         </td>
+                        <td className="p-5">
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                            log.no_time_out
+                              ? "bg-rose-100 text-rose-700"
+                              : log.status === "AUTO"
+                              ? log.pending
+                                ? "bg-orange-100 text-orange-700"
+                                : "bg-orange-50 text-orange-600"
+                              : log.status === "ADMIN-CORRECTED"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : log.time_out
+                              ? "bg-gray-100 text-gray-600"
+                              : "bg-green-50 text-green-600"
+                          }`}>
+                            {closureLabel(log)}
+                          </span>
+                        </td>
+                        <td className="p-5">
+                          {log.time_out || log.no_time_out ? (
+                            <button
+                              onClick={() => setCorrectionLog(log)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                                log.status === "AUTO" || log.no_time_out
+                                  ? "bg-amber-500 text-white hover:bg-amber-600"
+                                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                              }`}
+                            >
+                              {log.status === "AUTO" || log.no_time_out ? "Correct" : "Review"}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-gray-300">—</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan={6} className="p-12 text-center text-gray-400">
+                    <td colSpan={8} className="p-12 text-center text-gray-400">
                       No records found for this period.
                     </td>
                   </tr>
@@ -537,6 +644,15 @@ export default function AdminDashboardPage() {
         </div>
 
       </div>
+
+      {/* M.39: ADMIN TIME OUT CORRECTION */}
+      {correctionLog && (
+        <AttendanceCorrectionModal
+          log={correctionLog}
+          onClose={() => setCorrectionLog(null)}
+          onCorrected={handleCorrected}
+        />
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
 const { philippineDateStr, manilaMonthRange } = require("../utils/phTime");
+const { getCreditPolicy, isExpired } = require("../utils/attendanceCredit");
 
 // GET MONTHLY LOGS
 router.get("/:employee_db_id/:year/:month", async (req, res) => {
@@ -27,13 +28,13 @@ router.get("/:employee_db_id/:year/:month", async (req, res) => {
   }
 
   try {
-    // M.39 H1b: Manila calendar-month window ΓÇö rolls at 00:00 Asia/Manila
+    // M.39 H1b: Manila calendar-month window — rolls at 00:00 Asia/Manila
     // (previously UTC-calendar bounds rolled at 08:00 PHT). Bounds stay
     // bound as Date params; stored timestamps and db.js "+08:00" are untouched.
     const { start: startDate, end: endDate } = manilaMonthRange(yr, mo);
 
     const [results] = await db.promise().query(
-      `SELECT id, time_in, time_out FROM attendance_logs
+      `SELECT id, time_in, time_out, closed_by FROM attendance_logs
        WHERE employee_db_id = ?
        AND time_in >= ? AND time_in <= ?
        ORDER BY time_in ASC`,
@@ -65,9 +66,35 @@ router.get("/:employee_db_id/:year/:month", async (req, res) => {
     });
 
     const days = Object.values(grouped).map((d) => {
-      const hours =
-        (new Date(d.last_out) - new Date(d.first_in)) /
-        (1000 * 60 * 60);
+      // Auto-timeout: keep closure sources distinguishable — an AUTO day
+      // carries a system-generated boundary Time Out and must never look
+      // identical to a genuine employee Time Out.
+      const hasAuto = d.logs.some((l) => l.closed_by === "auto");
+      const hasAdmin = d.logs.some((l) => l.closed_by === "admin");
+      // Blank expired session ("No Time Out") — payroll model: no hours.
+      const hasNoTimeOut =
+        d.logs.some((l) => !l.time_out && isExpired(l.time_in)) &&
+        !d.logs.some((l) => l.time_out);
+      const status = hasNoTimeOut
+        ? "NO TIME-OUT"
+        : hasAuto
+        ? "AUTO"
+        : hasAdmin
+        ? "ADMIN-CORRECTED"
+        : "USER";
+
+      // Credit policy: under the default "pending" policy an auto-closed
+      // day is credited NO hours until an admin corrects it — the value is
+      // withheld (null), never fabricated. "bounded"/"fixed" are explicit
+      // school policies (utils/attendanceCredit).
+      const pending = hasAuto && getCreditPolicy() === "pending";
+
+      // Open sessions (time_out IS NULL) contribute 0 hours — otherwise
+      // new Date(null) = 1970 yields absurd negative totals. Matches the
+      // export behavior (r.time_out ? … : 0).
+      const hours = d.last_out
+        ? (new Date(d.last_out) - new Date(d.first_in)) / (1000 * 60 * 60)
+        : 0;
 
       // Late detection: 8:30 AM cutoff (PHT = UTC+8)
       // mysql2 stores PHT times as UTC offsets, so extract PHT hours from UTC
@@ -79,23 +106,27 @@ router.get("/:employee_db_id/:year/:month", async (req, res) => {
         date: d.date,
         first_in: d.first_in,
         last_out: d.last_out,
-        hours: isNaN(hours) ? 0 : Number(hours.toFixed(2)),
+        hours: pending || hasNoTimeOut ? null : isNaN(hours) ? 0 : Number(Math.max(0, hours).toFixed(2)),
         late: isLate,
+        status,
+        pending,
+        no_time_out: hasNoTimeOut,
       };
     });
 
-    const total_hours = days.reduce(
-      (sum, d) => sum + d.hours,
-      0
-    );
+    // Totals cover determined days only; pending days are counted, not guessed.
+    const determined = days.filter((d) => !d.pending);
+    const total_hours = determined.reduce((sum, d) => sum + (d.hours || 0), 0);
 
     const late_days = days.filter((d) => d.late).length;
+    const pending_days = days.filter((d) => d.pending).length;
 
     res.json({
       summary: {
         total_hours: total_hours.toFixed(2),
         late_days,
         total_days: days.length,
+        pending_days,
       },
       days,
     });
