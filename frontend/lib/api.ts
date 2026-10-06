@@ -1,4 +1,8 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://spc-dtr-backend.onrender.com/api";
+// NEXT_PUBLIC_API_URL is set explicitly in every supported build path
+// (deploy-dtr.sh build-arg, frontend/.env.local, production image). Fall
+// back to same-origin. M.28 cleanup: legacy Render fallback removed.
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api`;
 
 // One-time cleanup: remove old localStorage auth data from pre-cookie migration
 if (typeof window !== "undefined") {
@@ -66,13 +70,31 @@ const request = async (endpoint: string, options: any = {}) => {
         csrfToken = null;
         // Don't auto-redirect for auth-check endpoints — let AuthProvider handle gracefully
         const isAuthCheck = endpoint === "/auth/csrf" || endpoint === "/me";
+        // Failed login must surface the server message (e.g. "Invalid
+        // credentials") on the login form — not redirect/reload it.
+        if (endpoint === "/login") {
+          throw new Error(data?.message || "Invalid credentials");
+        }
+        // M.45f: /change-password must surface its own errors (e.g. "Current
+        // password is incorrect", "Session expired") instead of the generic
+        // redirect-to-login path, which made the page fake a success toast and
+        // stranded users in a password-change loop.
+        if (endpoint === "/change-password") {
+          throw new Error(data?.message || "Password change failed");
+        }
         if (!isAuthCheck && typeof window !== "undefined") {
-          window.location.href = "/login";
+          // Full-page redirect — respect sub-path deploys (e.g. /dtr)
+          window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/login`;
         }
         return null;
       }
 
-      throw new Error(data?.message || "Request failed");
+      // Preserve the response payload (e.g. DTR identity candidates on 409)
+      // so callers can render resolution choices, not just a message.
+      const enriched: any = new Error(data?.message || "Request failed");
+      enriched.status = res.status;
+      enriched.data = data;
+      throw enriched;
     }
 
     return data;
@@ -100,10 +122,13 @@ export const api = {
 
   me: () => request("/me"),
 
-  timeIn: (employee_db_id: number) =>
+  // `abandonOpen` acknowledges abandoning an open record from a previous
+  // day (forgotten Time Out) so today's Time In can proceed — the old
+  // record stays blank "No Time Out" and needs a DTR Correction Form.
+  timeIn: (employee_db_id: number, opts?: { abandonOpen?: boolean }) =>
     request("/dtr/time-in", {
       method: "POST",
-      body: JSON.stringify({ employee_db_id }),
+      body: JSON.stringify({ employee_db_id, abandon_open: !!opts?.abandonOpen }),
     }),
 
   timeOut: (employee_db_id: number) =>
@@ -112,14 +137,35 @@ export const api = {
       body: JSON.stringify({ employee_db_id }),
     }),
 
+  // Admin-only: correct the Time Out of one attendance record.
+  // Audited (attendance_corrections + security_logs); time_out is bound
+  // to the record's own attendance day.
+  correctAttendanceTimeOut: (attendanceId: number, timeOut: string) =>
+    request(`/attendance/${attendanceId}/time-out`, {
+      method: "PUT",
+      body: JSON.stringify({ time_out: timeOut }),
+    }),
+
+  // Admin-only: read the correction audit trail of one attendance record.
+  getAttendanceCorrections: (attendanceId: number) =>
+    request(`/attendance/${attendanceId}/corrections`),
+
   getStatus: (employee_db_id: number) =>
     request(`/time/status/${employee_db_id}`),
 
-  getLogs: (page = 1, limit = 50, search = "") => {
+  getLogs: (
+    page = 1,
+    limit = 50,
+    search = "",
+    range?: { dateRange?: string; from?: string; to?: string }
+  ) => {
     const queryParams = new URLSearchParams();
     queryParams.append("page", page.toString());
     queryParams.append("limit", limit.toString());
     if (search) queryParams.append("search", search);
+    if (range?.dateRange) queryParams.append("dateRange", range.dateRange);
+    if (range?.from) queryParams.append("from", range.from);
+    if (range?.to) queryParams.append("to", range.to);
     return request(`/logs?${queryParams.toString()}`);
   },
 
@@ -166,16 +212,69 @@ export const api = {
     }),
 
   getDepartments: () => request("/departments"),
-  getDepartmentLogsByDepartment: (deptId: number) =>
-    request(`/departments/${deptId}/logs`),
-  getDepartmentSummary: () => request("/departments/summary"),
-  exportDepartmentLogs: (deptId?: number, dateRange?: string) => {
-    const params = new URLSearchParams();
-    if (deptId) params.append("deptId", deptId.toString());
-    if (dateRange) params.append("dateRange", dateRange);
+
+  getNotifications: (params?: {
+    page?: number;
+    limit?: number;
+    date?: string;
+  }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append("page", params.page.toString());
+    if (params?.limit) queryParams.append("limit", params.limit.toString());
+    if (params?.date) queryParams.append("date", params.date);
+    const query = queryParams.toString();
+    return request(`/notifications${query ? `?${query}` : ""}`);
+  },
+  getDepartmentLogsByDepartment: (
+    deptId: number,
+    params?: {
+      page?: number;
+      limit?: number;
+      dateRange?: string;
+      from?: string;
+      to?: string;
+    }
+  ) => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append("page", params.page.toString());
+    if (params?.limit) queryParams.append("limit", params.limit.toString());
+    if (params?.dateRange) queryParams.append("dateRange", params.dateRange);
+    if (params?.from) queryParams.append("from", params.from);
+    if (params?.to) queryParams.append("to", params.to);
+    const query = queryParams.toString();
     return request(
-      `/departments/export${params.toString() ? `?${params.toString()}` : ""}`
+      `/departments/${deptId}/logs${query ? `?${query}` : ""}`
     );
+  },
+  getDepartmentSummary: () => request("/departments/summary"),
+  // Server-side Excel export (complete data for the requested window —
+  // payroll-safe; never limited by what the table has loaded).
+  exportDepartmentLogs: async (opts: {
+    deptId?: number;
+    dateRange?: string;
+    from?: string;
+    to?: string;
+    label?: string;
+  } = {}) => {
+    const params = new URLSearchParams();
+    params.append("type", opts.deptId ? "department" : "all");
+    if (opts.deptId) params.append("deptId", opts.deptId.toString());
+    if (opts.dateRange) params.append("dateRange", opts.dateRange);
+    if (opts.from) params.append("from", opts.from);
+    if (opts.to) params.append("to", opts.to);
+    const res = await fetch(
+      `${API_URL}/departments/export?${params.toString()}`,
+      { credentials: "include" }
+    );
+    if (!res.ok) throw new Error("Export failed");
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download =
+      opts.label || `DTR_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    link.click();
+    window.URL.revokeObjectURL(url);
   },
 
   changePassword: (data: {
