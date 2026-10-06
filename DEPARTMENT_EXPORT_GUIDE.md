@@ -73,6 +73,16 @@ All Excel exports now include consistent, well-organized columns:
 - No empty/undefined values (uses "Unknown" or "N/A")
 - Sorted by department first, then by time
 
+> **Attendance status note (M.61):** "Late" is no longer a user-facing
+> attendance classification anywhere in the app (employee or admin screens).
+> Screens now show attendance completion state (ACTIVE / COMPLETED, plus
+> OPEN / NO TIME-OUT) instead of punctuality. The existing export fields
+> **"Total Late"**, **"Times Late"**, the **"Late / On Time"** status value,
+> and the **"LATE / -"** remark are **preserved unchanged** in server-generated
+> XLSX exports for backward compatibility with any external/manual workflows.
+> No payroll integration is asserted; the repository documents no external
+> consumer for these columns.
+
 ---
 
 ### 4. **Backend API Improvements** (`backend/routes/departmentRoutes.js`)

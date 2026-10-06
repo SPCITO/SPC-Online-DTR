@@ -308,8 +308,11 @@ function UserLogsContent() {
 
                     logs.map((log, i) => {
 
-                      const late =
-                        new Date(log.time_in).getHours() > 8;
+                      const state = log.no_time_out
+                        ? "No Time Out"
+                        : log.time_out
+                        ? "Completed"
+                        : "Active";
 
                       return (
 
@@ -346,13 +349,15 @@ function UserLogsContent() {
                                 text-xs font-bold
 
                                 ${
-                                  late
-                                    ? "bg-red-100 text-red-600"
-                                    : "bg-emerald-100 text-emerald-700"
+                                  state === "Active"
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : state === "No Time Out"
+                                    ? "bg-rose-100 text-rose-700"
+                                    : "bg-slate-100 text-slate-600"
                                 }
                               `}
                             >
-                              {late ? "Late" : "On Time"}
+                              {state}
                             </span>
 
                           </td>

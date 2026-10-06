@@ -55,8 +55,7 @@ router.get("/summary", verifyToken, requireRole("admin"), async (req, res) => {
     const [rows] = await db.promise().query(
       `SELECT COALESCE(d.groupno, e.department_id) AS department_id,
               COUNT(DISTINCT e.id) AS total_employees,
-              SUM(CASE WHEN al.time_out IS NULL AND al.id IS NOT NULL THEN 1 ELSE 0 END) AS active_count,
-              SUM(CASE WHEN al.id IS NOT NULL AND TIME(al.time_in) > '08:30:00' THEN 1 ELSE 0 END) AS late_count
+              SUM(CASE WHEN al.time_out IS NULL AND al.id IS NOT NULL THEN 1 ELSE 0 END) AS active_count
        FROM employees e
        LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
        LEFT JOIN attendance_logs al ON al.employee_db_id = e.id

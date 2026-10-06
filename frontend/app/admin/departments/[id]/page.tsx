@@ -9,7 +9,6 @@ import {
   ArrowLeft,
   Users,
   Activity,
-  TriangleAlert,
   Clock3,
 } from "lucide-react";
 
@@ -97,22 +96,14 @@ export default function DepartmentPage() {
     setLogs((prev) => prev.map((l) => (l.id === updated.id ? { ...l, ...updated } : l)));
   };
 
+  // Attendance completion state (M.61): ACTIVE = open record, COMPLETED =
+  // timed out. Punctuality ("Late") is no longer classified in the UX.
   const getStatus = (log: any) => {
     if (!log.time_out) {
       return "ACTIVE";
     }
 
-    const timeIn = new Date(log.time_in);
-
-    const totalMinutes =
-      timeIn.getHours() * 60 +
-      timeIn.getMinutes();
-
-    if (totalMinutes > 510) {
-      return "LATE";
-    }
-
-    return "OFFLINE";
+    return "COMPLETED";
   };
 
   // The server already applies the date window — display what was loaded.
@@ -121,12 +112,6 @@ export default function DepartmentPage() {
   const activeCount =
     filteredLogs.filter(
       (l) => !l.time_out
-    ).length;
-
-  const lateCount =
-    filteredLogs.filter(
-      (l) =>
-        getStatus(l) === "LATE"
     ).length;
 
   if (loading) {
@@ -180,7 +165,7 @@ export default function DepartmentPage() {
         </div>
 
         {/* STATS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
 
           <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
             <div className="flex items-center justify-between">
@@ -213,23 +198,6 @@ export default function DepartmentPage() {
               </div>
 
               <Activity className="text-blue-600" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-            <div className="flex items-center justify-between">
-
-              <div>
-                <p className="text-gray-400 text-sm">
-                  Late Employees
-                </p>
-
-                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-gray-900 mt-2">
-                  {lateCount}
-                </h2>
-              </div>
-
-              <TriangleAlert className="text-yellow-600" />
             </div>
           </div>
 
@@ -295,7 +263,7 @@ export default function DepartmentPage() {
 
         {/* ANALYTICS */}
         {tab === "analytics" ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 gap-5">
 
             <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
               <h2 className="text-xl font-black text-gray-900 mb-4">
@@ -312,57 +280,9 @@ export default function DepartmentPage() {
                 </div>
 
                 <div className="flex justify-between">
-                  <span className="text-black">Late Employees</span>
-                  <span className="font-bold text-yellow-600">
-                    {lateCount}
-                  </span>
-                </div>
-
-                <div className="flex justify-between">
                   <span className="text-black">Currently Active</span>
                   <span className="font-bold text-emerald-600">
                     {activeCount}
-                  </span>
-                </div>
-
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-              <h2 className="text-xl font-black text-gray-900 mb-4">
-                Department Insights
-              </h2>
-
-              <div className="space-y-4">
-
-                <div className="flex justify-between">
-                  <span className="text-black">On-Time Rate</span>
-
-                  <span className="font-bold text-emerald-600">
-                    {logs.length
-                      ? Math.round(
-                          ((logs.length -
-                            lateCount) /
-                            logs.length) *
-                            100
-                        )
-                      : 0}
-                    %
-                  </span>
-                </div>
-
-                <div className="flex justify-between">
-                  <span className="text-black">Late Rate</span>
-
-                  <span className="font-bold text-yellow-600">
-                    {logs.length
-                      ? Math.round(
-                          (lateCount /
-                            logs.length) *
-                            100
-                        )
-                      : 0}
-                    %
                   </span>
                 </div>
 
@@ -458,16 +378,9 @@ export default function DepartmentPage() {
                           )}
 
                           {status ===
-                            "OFFLINE" && (
+                            "COMPLETED" && (
                             <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-600 text-xs font-bold">
-                              Offline
-                            </span>
-                          )}
-
-                          {status ===
-                            "LATE" && (
-                            <span className="px-3 py-1 rounded-full bg-yellow-100 text-yellow-700 text-xs font-bold">
-                              Late
+                              Completed
                             </span>
                           )}
 

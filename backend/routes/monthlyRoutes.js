@@ -96,18 +96,11 @@ router.get("/:employee_db_id/:year/:month", async (req, res) => {
         ? (new Date(d.last_out) - new Date(d.first_in)) / (1000 * 60 * 60)
         : 0;
 
-      // Late detection: 8:30 AM cutoff (PHT = UTC+8)
-      // mysql2 stores PHT times as UTC offsets, so extract PHT hours from UTC
-      const phtHour = (new Date(d.first_in).getUTCHours() + 8) % 24;
-      const phtMinute = new Date(d.first_in).getUTCMinutes();
-      const isLate = phtHour > 8 || (phtHour === 8 && phtMinute > 30);
-
       return {
         date: d.date,
         first_in: d.first_in,
         last_out: d.last_out,
         hours: pending || hasNoTimeOut ? null : isNaN(hours) ? 0 : Number(Math.max(0, hours).toFixed(2)),
-        late: isLate,
         status,
         pending,
         no_time_out: hasNoTimeOut,
@@ -118,13 +111,11 @@ router.get("/:employee_db_id/:year/:month", async (req, res) => {
     const determined = days.filter((d) => !d.pending);
     const total_hours = determined.reduce((sum, d) => sum + (d.hours || 0), 0);
 
-    const late_days = days.filter((d) => d.late).length;
     const pending_days = days.filter((d) => d.pending).length;
 
     res.json({
       summary: {
         total_hours: total_hours.toFixed(2),
-        late_days,
         total_days: days.length,
         pending_days,
       },

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
-import ExcelJS from "exceljs";
 import AttendanceCorrectionModal from "@/components/AttendanceCorrectionModal";
 
 import {
@@ -11,7 +10,6 @@ import {
   Download,
   Users,
   Clock3,
-  TriangleAlert,
   Activity,
   ChevronRight,
   Loader2,
@@ -124,12 +122,11 @@ export default function AdminDashboardPage() {
   const filteredLogs = logs;
 
   // HELPERS
+  // Attendance completion state (M.61): ACTIVE = open record, COMPLETED =
+  // timed out. Punctuality ("Late") is no longer classified in the UX.
   const getStatus = (log: any) => {
     if (!log.time_out) return "ACTIVE";
-    const timeIn = new Date(log.time_in);
-    const totalMinutes = timeIn.getHours() * 60 + timeIn.getMinutes();
-    if (totalMinutes > 510) return "LATE"; // After 8:30 AM
-    return "OFFLINE";
+    return "COMPLETED";
   };
 
   const getWorkHours = (log: any) => {
@@ -161,73 +158,9 @@ export default function AdminDashboardPage() {
         name,
         total: deptLogs.length,
         active: deptLogs.filter((l) => !l.time_out).length,
-        late: deptLogs.filter((l) => getStatus(l) === "LATE").length,
       };
     });
   }, [filteredLogs]);
-
-  // --- ADVANCED EXPORT LOGIC (EXCELJS) ---
-
-  const generateFilename = (prefix: string) => {
-    const dateStr = new Date().toISOString().split("T")[0];
-    return `${prefix}_${filter.toUpperCase()}_${dateStr}.xlsx`;
-  };
-
-  const setupWorksheet = (worksheet: ExcelJS.Worksheet, title: string) => {
-    worksheet.properties.defaultRowHeight = 20;
-    
-    // Header Row
-    const headerRow = worksheet.addRow([
-      "Employee ID", "Name", "Department", "Role", 
-      "Time In", "Time Out", "Status", "Work Hours", "Closure"
-    ]);
-    
-    headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    headerRow.fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FF10B981" }, // Emerald 500
-    };
-    headerRow.alignment = { vertical: "middle", horizontal: "center" };
-    headerRow.height = 25;
-
-    // Column Widths
-    worksheet.columns = [
-      { width: 15 }, { width: 25 }, { width: 20 }, { width: 15 },
-      { width: 22 }, { width: 22 }, { width: 12 }, { width: 12 }, { width: 24 }
-    ];
-  };
-
-  const addLogData = (worksheet: ExcelJS.Worksheet, data: any[]) => {
-    data.forEach((log) => {
-      const status = getStatus(log);
-      let statusColor = "FF9CA3AF"; // Gray
-      if (status === "ACTIVE") statusColor = "FF10B981"; // Green
-      if (status === "LATE") statusColor = "FFF59E0B"; // Yellow
-
-      const row = worksheet.addRow([
-        log.employee_db_id,
-        log.name,
-        DEPARTMENT_NAMES[log.department_id] || "Unknown",
-        log.role || "N/A",
-        log.time_in ? new Date(log.time_in).toLocaleString() : "",
-        log.time_out ? new Date(log.time_out).toLocaleString() : "",
-        status,
-        getWorkHours(log),
-        closureLabel(log),
-      ]);
-
-      // Style Status Cell
-      const statusCell = row.getCell(7);
-      statusCell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: statusColor },
-      };
-      statusCell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-      statusCell.alignment = { horizontal: "center" };
-    });
-  };
 
   // Server-side export: complete data for the selected window — payroll
   // basis must never be limited by what the table has loaded.
@@ -251,62 +184,6 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleExportAllLegacy = async () => {
-    setExporting(true);
-    try {
-      const workbook = new ExcelJS.Workbook();
-      workbook.creator = "SPC DTR System";
-      workbook.lastModifiedBy = "Admin";
-      workbook.created = new Date();
-
-      // 1. Executive Summary Sheet
-      const summarySheet = workbook.addWorksheet("Executive Summary");
-      summarySheet.mergeCells("A1:H1");
-      const titleCell = summarySheet.getCell("A1");
-      titleCell.value = `Attendance Overview (${filter.toUpperCase()})`;
-      titleCell.font = { bold: true, size: 18, color: { argb: "FF111827" } };
-      titleCell.alignment = { horizontal: "center" };
-      
-      // Summary Stats Table
-      const statsHeaders = ["Department", "Total Logs", "Active Now", "Late Arrivals", "Attendance Rate"];
-      const statsRow = summarySheet.addRow(statsHeaders);
-      statsRow.font = { bold: true };
-      statsRow.eachCell((cell) => { cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } }; });
-
-      getDepartmentStats.forEach(dept => {
-        const rate = dept.total > 0 ? `${Math.round(((dept.total - dept.late) / dept.total) * 100)}%` : "100%";
-        summarySheet.addRow([dept.name, dept.total, dept.active, dept.late, rate]);
-      });
-      summarySheet.columns.forEach(col => col.width = 20);
-
-      // 2. Individual Department Sheets
-      Object.entries(DEPARTMENT_NAMES).forEach(([id, name]) => {
-        const deptLogs = filteredLogs.filter(l => Number(l.department_id) === Number(id));
-        if (deptLogs.length === 0) return;
-
-        const sheet = workbook.addWorksheet(name.substring(0, 31));
-        setupWorksheet(sheet, name);
-        
-        // Sort logs: Latest first
-        const sorted = [...deptLogs].sort((a, b) => new Date(b.time_in).getTime() - new Date(a.time_in).getTime());
-        addLogData(sheet, sorted);
-      });
-
-      const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = generateFilename("ALL_DEPARTMENTS_REPORT");
-      link.click();
-    } catch (error) {
-      console.error("Export failed:", error);
-      alert("Failed to generate report.");
-    } finally {
-      setExporting(false);
-    }
-  };
-
   const handleExportDepartment = async (deptId: number, deptName: string) => {
     setExporting(true);
     try {
@@ -317,57 +194,6 @@ export default function AdminDashboardPage() {
         to: to || undefined,
         label: `${deptName.replace(/\s+/g, "_")}_${exportWindowLabel()}.xlsx`,
       });
-    } catch (error) {
-      console.error("Export failed:", error);
-      alert("Failed to generate report.");
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const handleExportDepartmentLegacy = async (deptId: number, deptName: string) => {
-    setExporting(true);
-    try {
-      const workbook = new ExcelJS.Workbook();
-      const deptLogs = filteredLogs.filter(l => Number(l.department_id) === deptId);
-
-      if (deptLogs.length === 0) {
-        alert("No data to export for this department.");
-        setExporting(false);
-        return;
-      }
-
-      // 1. Monthly/Period Overview Sheet
-      const overviewSheet = workbook.addWorksheet("Period Overview");
-      setupWorksheet(overviewSheet, `${deptName} Overview`);
-      
-      const sortedAll = [...deptLogs].sort((a, b) => new Date(b.time_in).getTime() - new Date(a.time_in).getTime());
-      addLogData(overviewSheet, sortedAll);
-
-      // 2. Daily Breakdown Sheets (Group by Date)
-      const logsByDay: Record<string, any[]> = {};
-      deptLogs.forEach(log => {
-        const dateKey = new Date(log.time_in).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-        if (!logsByDay[dateKey]) logsByDay[dateKey] = [];
-        logsByDay[dateKey].push(log);
-      });
-
-      Object.entries(logsByDay).forEach(([date, dayLogs]) => {
-        const safeName = `${date} ${deptName.substring(0, 15)}`.substring(0, 31);
-        const daySheet = workbook.addWorksheet(safeName);
-        setupWorksheet(daySheet, `Logs for ${date}`);
-        
-        const sortedDay = [...dayLogs].sort((a, b) => new Date(b.time_in).getTime() - new Date(a.time_in).getTime());
-        addLogData(daySheet, sortedDay);
-      });
-
-      const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = generateFilename(`${deptName.replace(/\s+/g, '_')}_REPORT`);
-      link.click();
     } catch (error) {
       console.error("Export failed:", error);
       alert("Failed to generate report.");
@@ -402,11 +228,10 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* TOP STATS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {[
             { label: "Total Logs", value: filteredLogs.length, icon: Users, color: "bg-emerald-100 text-emerald-600" },
             { label: "Active Now", value: filteredLogs.filter(l => !l.time_out).length, icon: Activity, color: "bg-blue-100 text-blue-600" },
-            { label: "Late Arrivals", value: filteredLogs.filter(l => getStatus(l) === "LATE").length, icon: TriangleAlert, color: "bg-yellow-100 text-yellow-600" },
           ].map((stat, i) => (
             <div key={i} className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between">
@@ -447,10 +272,6 @@ export default function AdminDashboardPage() {
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Active</span>
                   <span className="font-bold text-emerald-600">{dept.active}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Late</span>
-                  <span className="font-bold text-yellow-600">{dept.late}</span>
                 </div>
               </div>
 
@@ -575,7 +396,6 @@ export default function AdminDashboardPage() {
                         <td className="p-5">
                           <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                             status === "ACTIVE" ? "bg-green-100 text-green-700" :
-                            status === "LATE" ? "bg-yellow-100 text-yellow-700" :
                             "bg-gray-100 text-gray-700"
                           }`}>
                             {status}

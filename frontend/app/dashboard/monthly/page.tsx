@@ -11,7 +11,6 @@ import {
   CalendarDays,
   Clock3,
   TrendingUp,
-  TriangleAlert,
   BriefcaseBusiness,
 } from "lucide-react";
 
@@ -109,15 +108,6 @@ function MonthlyContent() {
     return d !== 0 && d !== 6;
   };
 
-  const isLate = (date: string) => {
-    const d = new Date(date);
-
-    return (
-      d.getHours() > 8 ||
-      (d.getHours() === 8 && d.getMinutes() > 30)
-    );
-  };
-
   const getDayColor = (day: number, record: any) => {
     const fullDate = new Date(
       currentDate.getFullYear(),
@@ -141,9 +131,6 @@ function MonthlyContent() {
     // Auto-closed (forgotten Time Out) — visibly distinct from a real day
     if (record.pending)
       return "bg-orange-100 text-orange-700 border-orange-200";
-
-    if (isLate(record.first_in))
-      return "bg-yellow-100 text-yellow-700 border-yellow-200";
 
     return "bg-emerald-100 text-emerald-700 border-emerald-200";
   };
@@ -263,36 +250,6 @@ function MonthlyContent() {
 
               <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black mt-4">
                 {data.summary.total_hours}
-              </h2>
-
-            </motion.div>
-
-            {/* LATE DAYS */}
-            <motion.div
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45 }}
-              className="
-                rounded-[32px]
-
-                bg-white/90
-                backdrop-blur-xl
-
-                border border-white
-
-                p-6
-
-                shadow-[0_10px_35px_rgba(0,0,0,0.07)]
-              "
-            >
-
-              <div className="flex items-center gap-2 text-slate-500 text-sm uppercase tracking-[0.2em]">
-                <TriangleAlert size={16} />
-                Late Days
-              </div>
-
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black mt-4 text-yellow-600">
-                {data.summary.late_days}
               </h2>
 
             </motion.div>
@@ -542,11 +499,6 @@ function MonthlyContent() {
               </div>
 
               <div className="flex items-center gap-2 text-slate-700">
-                <span className="w-3 h-3 rounded-full bg-yellow-400" />
-                Late
-              </div>
-
-              <div className="flex items-center gap-2 text-slate-700">
                 <span className="w-3 h-3 rounded-full bg-red-500" />
                 Absent
               </div>
@@ -605,9 +557,13 @@ function MonthlyContent() {
                     </p>
 
                     <h3 className="mt-2 text-xl font-black text-slate-900">
-                      {isLate(selectedDay.first_in)
-                        ? "Late"
-                        : "On Time"}
+                      {selectedDay.no_time_out
+                        ? "No Time Out"
+                        : selectedDay.pending
+                        ? "Auto-closed (Pending)"
+                        : selectedDay.last_out
+                        ? "Completed"
+                        : "Open"}
                     </h3>
                   </div>
 
