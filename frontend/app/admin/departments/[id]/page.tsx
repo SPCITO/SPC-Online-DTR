@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import AttendanceCorrectionModal from "@/components/AttendanceCorrectionModal";
+import LogSourceSelector from "@/components/LogSourceSelector";
+import type { SourceMode, SummaryGroup } from "@/lib/types";
 
 import {
   ArrowLeft,
@@ -49,6 +51,13 @@ export default function DepartmentPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
+  // M.75: Log Source selector — same semantics as the admin departments page
+  const [source, setSource] = useState<SourceMode>("online");
+  const [groups, setGroups] = useState<SummaryGroup[]>([]);
+  // Stale-response guard: a slower previous-source response must never
+  // repaint after a newer selection.
+  const requestSeq = useRef(0);
+
   const PAGE_SIZE = 200;
 
   const rangeParams = () =>
@@ -57,6 +66,7 @@ export default function DepartmentPage() {
       : { dateRange: tab === "analytics" ? "month" : tab };
 
   const fetchLogs = async (nextPage: number, append: boolean) => {
+    const seq = ++requestSeq.current;
     try {
       if (append) setLoadingMore(true);
       else setLoading(true);
@@ -64,17 +74,37 @@ export default function DepartmentPage() {
         page: nextPage,
         limit: PAGE_SIZE,
         ...rangeParams(),
+        source,
       });
+      if (seq !== requestSeq.current) return;
+
+      if (source === "both") {
+        const nextGroups: SummaryGroup[] = data?.groups || [];
+        setGroups((prev) => {
+          if (!append) return nextGroups;
+          const existing = new Set(prev.map((g) => `${g.employee_db_id}|${g.date}`));
+          return [...prev, ...nextGroups.filter((g) => !existing.has(`${g.employee_db_id}|${g.date}`))];
+        });
+        setLogs([]);
+        setTotal(data?.total ?? nextGroups.length);
+        setHasMore(Boolean(data?.hasMore));
+        setPage(nextPage);
+        return;
+      }
+
       const logList = Array.isArray(data) ? data : (data?.logs || []);
       setLogs((prev) => (append ? [...prev, ...logList] : logList));
+      setGroups([]);
       setTotal(data?.total ?? logList.length);
       setHasMore(Boolean(data?.hasMore));
       setPage(nextPage);
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (seq === requestSeq.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   };
 
@@ -83,7 +113,7 @@ export default function DepartmentPage() {
       fetchLogs(1, false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deptId, tab, from, to]);
+  }, [deptId, tab, from, to, source]);
 
   // Closure source label — USER / AUTO / ADMIN-CORRECTED / NO TIME-OUT
   const closureLabel = (log: any) => {
@@ -109,10 +139,44 @@ export default function DepartmentPage() {
   // The server already applies the date window — display what was loaded.
   const filteredLogs = logs;
 
+  // M.75: session rows in Online/Biometrics mode, reconciliation groups in
+  // Both mode — counters describe the dataset the table shows.
+  const displayCount = source === "both" ? groups.length : filteredLogs.length;
+
   const activeCount =
     filteredLogs.filter(
       (l) => !l.time_out
     ).length;
+
+  // M.75: timestamps may be ISO strings (Online DTR) or Manila wall
+  // strings (Biometrics) — parse both safely.
+  const toDate = (v: string | Date | null | undefined): Date | null => {
+    if (!v) return null;
+    if (typeof v === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(v)) {
+      return new Date(v.replace(" ", "T") + "+08:00");
+    }
+    return new Date(v);
+  };
+  const fmtDT = (v: string | Date | null | undefined) => {
+    const d = toDate(v);
+    return d ? d.toLocaleString() : "—";
+  };
+  const sessionLines = (sessions: Array<{ time_in?: string | null; time_out?: string | null }>) =>
+    sessions && sessions.length > 0
+      ? sessions.map((s) => {
+          const start = s.time_in ? String(s.time_in).slice(11, 19) : "—";
+          const end = s.time_out ? String(s.time_out).slice(11, 19) : "MISSING";
+          return `${start} → ${end}`;
+        })
+      : ["—"];
+  const reconciliationBadge = (state: string) =>
+    state === "MATCHED"
+      ? "bg-emerald-100 text-emerald-700"
+      : state === "DUPLICATE_CANDIDATE" || state === "TIME_MISMATCH"
+      ? "bg-amber-100 text-amber-700"
+      : state === "MISSING_TIMEOUT"
+      ? "bg-rose-100 text-rose-700"
+      : "bg-gray-100 text-gray-600";
 
   if (loading) {
     return (
@@ -256,8 +320,16 @@ export default function DepartmentPage() {
               Clear
             </button>
           )}
+          {/* M.75: Log Source — Online DTR / Biometrics / Both */}
+          <LogSourceSelector
+            value={source}
+            onChange={(next) => {
+              setSource(next);
+              setPage(1);
+            }}
+          />
           <span className="text-sm text-gray-400">
-            Showing {logs.length} of {total} records
+            Showing {displayCount} of {total} records
           </span>
         </div>
 
@@ -275,7 +347,7 @@ export default function DepartmentPage() {
                 <div className="flex justify-between">
                   <span className="text-black">Total Logs</span>
                   <span className="font-bold text-black">
-                    {logs.length}
+                    {displayCount}
                   </span>
                 </div>
 
@@ -314,12 +386,55 @@ export default function DepartmentPage() {
               </div>
 
               <div className="text-sm text-gray-400">
-                {filteredLogs.length} records
+                {displayCount} records
               </div>
 
             </div>
 
             <div className="overflow-x-auto">
+
+              {source === "both" ? (
+
+              <table className="w-full min-w-[900px]">
+
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-[0.2em] text-gray-400 border-b">
+                    <th className="p-3 sm:p-5">Employee</th>
+                    <th className="p-3 sm:p-5">Date</th>
+                    <th className="p-3 sm:p-5">Online DTR</th>
+                    <th className="p-3 sm:p-5">Biometrics</th>
+                    <th className="p-3 sm:p-5">Status</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+
+                  {groups.map((g) => (
+                    <tr
+                      key={`${g.employee_db_id}|${g.date}`}
+                      className="border-b border-gray-100 hover:bg-emerald-50/40 transition"
+                    >
+                      <td className="p-3 sm:p-5 font-semibold text-gray-900">{g.name || g.employee_db_id}</td>
+                      <td className="p-3 sm:p-5 text-gray-600">{g.date}</td>
+                      <td className="p-3 sm:p-5 text-gray-600 font-mono text-xs leading-6">
+                        {sessionLines(g.online).map((line, i) => (<div key={i}>{line}</div>))}
+                      </td>
+                      <td className="p-3 sm:p-5 text-gray-600 font-mono text-xs leading-6">
+                        {sessionLines(g.biometrics).map((line, i) => (<div key={i}>{line}</div>))}
+                      </td>
+                      <td className="p-3 sm:p-5">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${reconciliationBadge(g.reconciliation.state)}`}>
+                          {g.reconciliation.state}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+
+                </tbody>
+
+              </table>
+
+              ) : (
 
               <table className="w-full min-w-[900px]">
 
@@ -354,17 +469,13 @@ export default function DepartmentPage() {
 
                         <td className="p-3 sm:p-5 text-gray-600">
                           {log.time_in
-                            ? new Date(
-                                log.time_in
-                              ).toLocaleString()
+                            ? fmtDT(log.time_in)
                             : "—"}
                         </td>
 
                         <td className="p-3 sm:p-5 text-gray-600">
                           {log.time_out
-                            ? new Date(
-                                log.time_out
-                              ).toLocaleString()
+                            ? fmtDT(log.time_out)
                             : "—"}
                         </td>
 
@@ -405,7 +516,9 @@ export default function DepartmentPage() {
                         </td>
 
                         <td className="p-3 sm:p-5">
-                          {log.time_out || log.no_time_out ? (
+                          {log.source === "BIOMETRICS" ? (
+                            <span className="text-xs text-gray-300">—</span>
+                          ) : log.time_out || log.no_time_out ? (
                             <button
                               onClick={() => setCorrectionLog(log)}
                               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
@@ -428,6 +541,8 @@ export default function DepartmentPage() {
                 </tbody>
 
               </table>
+
+              )}
 
             </div>
 

@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import LogSourceSelector from "@/components/LogSourceSelector";
 import type { SourceMode, SummaryGroup } from "@/lib/types";
+import { statCards } from "@/lib/statCards";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -97,6 +98,11 @@ function UserLogsContent() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, source]);
+
+  // M.75: stat cards describe the dataset the table shows — sessions in
+  // Online/Biometrics mode, reconciliation groups in Both mode (one group
+  // per employee-day counted once, never per source column).
+  const stats = statCards(source, logs, groups);
 
   if (!user) return null;
 
@@ -211,7 +217,7 @@ function UserLogsContent() {
               </div>
 
               <h2 className="text-4xl font-black mt-4">
-                {logs.length}
+                {stats.total}
               </h2>
 
             </motion.div>
@@ -240,9 +246,7 @@ function UserLogsContent() {
               </div>
 
               <h2 className="text-2xl font-black mt-4 text-slate-900">
-                {logs[0]
-                  ? new Date(logs[0].time_in).toLocaleDateString()
-                  : "—"}
+                {stats.latestDateLabel}
               </h2>
 
             </motion.div>
