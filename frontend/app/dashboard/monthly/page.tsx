@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import LogSourceSelector from "@/components/LogSourceSelector";
+import type { SourceMode } from "@/lib/types";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -27,31 +29,50 @@ function MonthlyContent() {
   const [data, setData] = useState<any>(null);
   const [selectedDay, setSelectedDay] = useState<any>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
+  // M.69: Log Source — online (default) / biometrics / both
+  const [source, setSource] = useState<SourceMode>("online");
   const router = useRouter();
 
-  // FETCH DATA
+  // M.69: safe display parsing for ISO strings (Online DTR) and Manila
+  // wall strings (Biometrics).
+  const toDate = (v: string | Date | null | undefined): Date | null => {
+    if (!v) return null;
+    if (typeof v === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(v)) {
+      return new Date(v.replace(" ", "T") + "+08:00");
+    }
+    return new Date(v);
+  };
+
+  // FETCH DATA (M.70: request sequencing guards against stale repaints)
+  const requestSeq = useRef(0);
   const fetchMonthly = async () => {
     if (!user) return;
 
+    const seq = ++requestSeq.current;
     try {
       const res = await api.getMonthlyLogs(
         user.employee_db_id,
         currentDate.getFullYear(),
-        currentDate.getMonth() + 1
+        currentDate.getMonth() + 1,
+        source
       );
+      if (seq !== requestSeq.current) return;
       setData(res);
     } catch (err) {
       console.error("Failed to fetch monthly data:", err);
+      if (seq !== requestSeq.current) return;
       setData(null);
     }
   };
 
   useEffect(() => {
     if (user) fetchMonthly();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     user,
     currentDate.getFullYear(),
     currentDate.getMonth(),
+    source,
   ]);
 
   if (!data) {
@@ -185,6 +206,16 @@ function MonthlyContent() {
                 <p className="text-slate-500 mt-3">
                   Track your attendance performance
                 </p>
+
+                <div className="mt-4">
+                  <LogSourceSelector
+                    value={source}
+                    onChange={(s) => {
+                      setSource(s);
+                      setSelectedDay(null);
+                    }}
+                  />
+                </div>
 
               </div>
 
@@ -583,9 +614,7 @@ function MonthlyContent() {
                     </p>
 
                     <h3 className="mt-2 text-xl font-black text-slate-900">
-                      {new Date(
-                        selectedDay.first_in
-                      ).toLocaleTimeString()}
+                      {toDate(selectedDay.first_in)?.toLocaleTimeString() ?? "—"}
                     </h3>
                   </div>
 
@@ -605,9 +634,7 @@ function MonthlyContent() {
 
                     <h3 className="mt-2 text-xl font-black text-slate-900">
                       {selectedDay.last_out
-                        ? new Date(
-                            selectedDay.last_out
-                          ).toLocaleTimeString()
+                        ? toDate(selectedDay.last_out)?.toLocaleTimeString()
                         : selectedDay.no_time_out
                         ? "No Time Out"
                         : "—"}
@@ -615,6 +642,62 @@ function MonthlyContent() {
                   </div>
 
                 </div>
+
+                {/* M.69 — Both/Summary: every source session preserved,
+                    never merged into one fabricated range. */}
+                {(selectedDay.online || selectedDay.biometrics) && (
+                  <div className="mt-6 grid sm:grid-cols-2 gap-4">
+                    <div className="rounded-2xl bg-emerald-50/60 p-5">
+                      <p className="text-emerald-700 text-xs uppercase tracking-[0.16em] font-bold">
+                        Online DTR sessions
+                      </p>
+                      <div className="mt-2 space-y-1 text-slate-800 font-mono text-sm">
+                        {(selectedDay.online || []).length > 0 ? (
+                          selectedDay.online.map((s: { source_id?: number; id?: number; time_in?: string | null; time_out?: string | null }) => (
+                            <div key={s.source_id ?? s.id}>
+                              {toDate(s.time_in)?.toLocaleTimeString() ?? "—"} →{" "}
+                              {s.time_out ? toDate(s.time_out)?.toLocaleTimeString() : "MISSING"}
+                            </div>
+                          ))
+                        ) : (
+                          <div>—</div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl bg-sky-50/60 p-5">
+                      <p className="text-sky-700 text-xs uppercase tracking-[0.16em] font-bold">
+                        Biometrics sessions
+                      </p>
+                      <div className="mt-2 space-y-1 text-slate-800 font-mono text-sm">
+                        {(selectedDay.biometrics || []).length > 0 ? (
+                          selectedDay.biometrics.map((s: { source_id?: number; id?: number; time_in?: string | null; time_out?: string | null }) => (
+                            <div key={s.source_id ?? s.id}>
+                              {toDate(s.time_in)?.toLocaleTimeString() ?? "—"} →{" "}
+                              {s.time_out ? toDate(s.time_out)?.toLocaleTimeString() : "MISSING"}
+                            </div>
+                          ))
+                        ) : (
+                          <div>—</div>
+                        )}
+                      </div>
+                    </div>
+                    {selectedDay.reconciliation && (
+                      <div className="sm:col-span-2">
+                        <span
+                          className={`px-4 py-2 rounded-full text-xs font-bold ${
+                            selectedDay.reconciliation.state === "MATCHED"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : selectedDay.reconciliation.state === "MISSING_TIMEOUT"
+                              ? "bg-rose-100 text-rose-700"
+                              : "bg-amber-100 text-amber-700"
+                          }`}
+                        >
+                          {selectedDay.reconciliation.state}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
               </>
 

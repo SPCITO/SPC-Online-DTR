@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import AttendanceCorrectionModal from "@/components/AttendanceCorrectionModal";
+import LogSourceSelector from "@/components/LogSourceSelector";
+import type { SourceMode, SummaryGroup } from "@/lib/types";
 
 import {
   Search,
@@ -49,6 +51,10 @@ export default function AdminDashboardPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
+  // M.69: Log Source selector — online (default) / biometrics / both
+  const [source, setSource] = useState<SourceMode>("online");
+  const [groups, setGroups] = useState<SummaryGroup[]>([]);
+
   // Pagination State
   const [page, setPage] = useState(1);
   const [limit] = useState(50);
@@ -57,6 +63,10 @@ export default function AdminDashboardPage() {
 
   // Debounced Search State
   const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // M.70: request sequencing — a slower response from a previous source
+  // selection must never repaint stale attendance data.
+  const requestSeq = useRef(0);
 
   // ✅ FIX 1: Debounce Search Input Only
   useEffect(() => {
@@ -68,22 +78,47 @@ export default function AdminDashboardPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  // FETCH LOGS with Pagination
+  // FETCH LOGS with Pagination (M.69: source-aware; online unchanged)
   useEffect(() => {
     const fetchLogs = async () => {
+      const seq = ++requestSeq.current;
       if (page === 1) {
         setLoading(true);
         setLogs([]); // Clear list for new search/page 1
+        setGroups([]);
       } else {
         setFetchingMore(true);
       }
 
       try {
-        const data = await api.getLogs(page, limit, debouncedSearch, {
+        const rangeArgs = {
           dateRange: from || to ? undefined : filter,
           from: from || undefined,
           to: to || undefined,
-        });
+        };
+
+        if (source === "both") {
+          const data = await api.getAttendanceSummary({
+            page,
+            limit,
+            search: debouncedSearch,
+            dateRange: rangeArgs.dateRange,
+            from: rangeArgs.from,
+            to: rangeArgs.to,
+          });
+          if (seq !== requestSeq.current) return;
+          const newGroups: SummaryGroup[] = data?.groups || [];
+          setHasMore(page < (data?.totalPages || 0));
+          setGroups((prev) => {
+            if (page === 1) return newGroups;
+            const existing = new Set(prev.map((g) => `${g.employee_db_id}|${g.date}`));
+            return [...prev, ...newGroups.filter((g) => !existing.has(`${g.employee_db_id}|${g.date}`))];
+          });
+          return;
+        }
+
+        const data = await api.getLogs(page, limit, debouncedSearch, rangeArgs, source);
+        if (seq !== requestSeq.current) return;
         const newLogs: any[] = Array.isArray(data) ? data : [];
 
         if (newLogs.length === 0 || newLogs.length < limit) {
@@ -104,13 +139,15 @@ export default function AdminDashboardPage() {
       } catch (err) {
         console.error(err);
       } finally {
-        setLoading(false);
-        setFetchingMore(false);
+        if (seq === requestSeq.current) {
+          setLoading(false);
+          setFetchingMore(false);
+        }
       }
     };
     fetchLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, page, limit, filter, from, to]);
+  }, [debouncedSearch, page, limit, filter, from, to, source]);
 
   const handleLoadMore = () => {
     if (!fetchingMore && hasMore) {
@@ -129,15 +166,49 @@ export default function AdminDashboardPage() {
     return "COMPLETED";
   };
 
+  // M.69: timestamps may be ISO strings (Online DTR) or Manila wall
+  // strings ("YYYY-MM-DD HH:MM:SS", Biometrics) — parse both safely.
+  const toDate = (v: string | Date | null | undefined): Date | null => {
+    if (!v) return null;
+    if (typeof v === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(v)) {
+      return new Date(v.replace(" ", "T") + "+08:00");
+    }
+    return new Date(v);
+  };
+  const fmtDT = (v: string | Date | null | undefined) => {
+    const d = toDate(v);
+    return d ? d.toLocaleString() : "--";
+  };
+
   const getWorkHours = (log: any) => {
     if (!log.time_out) return "--";
     // AUTO rows awaiting correction carry NO credited hours (Policy A).
     if (log.pending) return "Pending";
-    const diff = new Date(log.time_out).getTime() - new Date(log.time_in).getTime();
+    const diff = (toDate(log.time_out)!.getTime() - toDate(log.time_in)!.getTime());
     const hrs = Math.floor(diff / 3600000);
     const mins = Math.floor((diff % 3600000) / 60000);
     return `${hrs}h ${mins}m`;
   };
+
+  // M.69: one line per source session — multi-session days keep every
+  // session visible; sessions are never merged into one fake range.
+  const sessionLines = (sessions: Array<{ time_in?: string | null; time_out?: string | null }>) =>
+    sessions && sessions.length > 0
+      ? sessions.map((s) => {
+          const start = s.time_in ? String(s.time_in).slice(11, 19) : "—";
+          const end = s.time_out ? String(s.time_out).slice(11, 19) : "MISSING";
+          return `${start} → ${end}`;
+        })
+      : ["—"];
+
+  const reconciliationBadge = (state: string) =>
+    state === "MATCHED"
+      ? "bg-emerald-100 text-emerald-700"
+      : state === "DUPLICATE_CANDIDATE" || state === "TIME_MISMATCH"
+      ? "bg-amber-100 text-amber-700"
+      : state === "MISSING_TIMEOUT"
+      ? "bg-rose-100 text-rose-700"
+      : "bg-gray-100 text-gray-600";
 
   // Closure source label — USER / AUTO / ADMIN-CORRECTED / NO TIME-OUT
   const closureLabel = (log: any) => {
@@ -174,7 +245,8 @@ export default function AdminDashboardPage() {
         dateRange: from || to ? undefined : filter,
         from: from || undefined,
         to: to || undefined,
-        label: `ALL_DEPARTMENTS_${exportWindowLabel()}.xlsx`,
+        source,
+        label: `ALL_DEPARTMENTS_${source !== "online" ? source + "_" : ""}${exportWindowLabel()}.xlsx`,
       });
     } catch (error) {
       console.error("Export failed:", error);
@@ -192,7 +264,8 @@ export default function AdminDashboardPage() {
         dateRange: from || to ? undefined : filter,
         from: from || undefined,
         to: to || undefined,
-        label: `${deptName.replace(/\s+/g, "_")}_${exportWindowLabel()}.xlsx`,
+        source,
+        label: `${deptName.replace(/\s+/g, "_")}_${source !== "online" ? source + "_" : ""}${exportWindowLabel()}.xlsx`,
       });
     } catch (error) {
       console.error("Export failed:", error);
@@ -349,6 +422,17 @@ export default function AdminDashboardPage() {
 
               <div className="h-8 w-px bg-gray-200 mx-1 hidden lg:block" />
 
+              {/* M.69: Log Source — Online DTR / Biometrics / Both */}
+              <LogSourceSelector
+                value={source}
+                onChange={(next) => {
+                  setSource(next);
+                  setPage(1);
+                }}
+              />
+
+              <div className="h-8 w-px bg-gray-200 mx-1 hidden lg:block" />
+
               <button
                 onClick={handleExportAll}
                 disabled={exporting}
@@ -362,6 +446,53 @@ export default function AdminDashboardPage() {
 
                     {/* Table Container with Internal Scroll */}
           <div className="relative w-full overflow-x-auto overflow-y-auto" style={{ maxHeight: '500px' }}>
+            {source === "both" ? (
+            <table className="w-full min-w-[750px]">
+              <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-gray-100">
+                <tr className="text-xs uppercase tracking-wider text-gray-500 font-bold">
+                  <th className="p-5 text-left">Employee</th>
+                  <th className="p-5 text-left">Date</th>
+                  <th className="p-5 text-left">Online DTR</th>
+                  <th className="p-5 text-left">Biometrics</th>
+                  <th className="p-5 text-left">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {loading && page === 1 ? (
+                  <tr>
+                    <td colSpan={5} className="p-12 text-center">
+                      <Loader2 className="w-8 h-8 animate-spin text-emerald-600 mx-auto" />
+                      <p className="text-gray-500 mt-3 font-medium">Loading logs...</p>
+                    </td>
+                  </tr>
+                ) : groups.length > 0 ? (
+                  groups.map((g) => (
+                    <tr key={`${g.employee_db_id}|${g.date}`} className="hover:bg-emerald-50/30 transition-colors">
+                      <td className="p-5 font-semibold text-gray-900">{g.name || "Unknown"}</td>
+                      <td className="p-5 text-gray-600">{g.date}</td>
+                      <td className="p-5 text-gray-600 font-mono text-xs leading-6">
+                        {sessionLines(g.online).map((line, i) => (<div key={i}>{line}</div>))}
+                      </td>
+                      <td className="p-5 text-gray-600 font-mono text-xs leading-6">
+                        {sessionLines(g.biometrics).map((line, i) => (<div key={i}>{line}</div>))}
+                      </td>
+                      <td className="p-5">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${reconciliationBadge(g.reconciliation.state)}`}>
+                          {g.reconciliation.state}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="p-12 text-center text-gray-400">
+                      No records found for this period.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            ) : (
             <table className="w-full min-w-[750px]">
               <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-gray-100">
                 <tr className="text-xs uppercase tracking-wider text-gray-500 font-bold">
@@ -390,8 +521,8 @@ export default function AdminDashboardPage() {
                       <tr key={i} className="hover:bg-emerald-50/30 transition-colors">
                         <td className="p-5 font-semibold text-gray-900">{log.name || "Unknown"}</td>
                         <td className="p-5 text-gray-600">{DEPARTMENT_NAMES[log.department_id] || "Unknown"}</td>
-                        <td className="p-5 text-gray-600 font-mono text-sm">{new Date(log.time_in).toLocaleString()}</td>
-                        <td className="p-5 text-gray-600 font-mono text-sm">{log.time_out ? new Date(log.time_out).toLocaleString() : "--"}</td>
+                        <td className="p-5 text-gray-600 font-mono text-sm">{fmtDT(log.time_in)}</td>
+                        <td className="p-5 text-gray-600 font-mono text-sm">{log.time_out ? fmtDT(log.time_out) : "--"}</td>
                         <td className="p-5 text-gray-700 font-medium">{getWorkHours(log)}</td>
                         <td className="p-5">
                           <span className={`px-3 py-1 rounded-full text-xs font-bold ${
@@ -419,7 +550,9 @@ export default function AdminDashboardPage() {
                           </span>
                         </td>
                         <td className="p-5">
-                          {log.time_out || log.no_time_out ? (
+                          {log.source === "BIOMETRICS" ? (
+                            <span className="text-xs text-gray-300">—</span>
+                          ) : log.time_out || log.no_time_out ? (
                             <button
                               onClick={() => setCorrectionLog(log)}
                               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
@@ -446,10 +579,11 @@ export default function AdminDashboardPage() {
                 )}
               </tbody>
             </table>
+            )}
           </div>
 
           {/* Load More Button */}
-          {!loading && hasMore && filteredLogs.length > 0 && (
+          {!loading && hasMore && (source === "both" ? groups.length > 0 : filteredLogs.length > 0) && (
             <div className="p-6 border-t border-gray-100 flex justify-center">
               <button
                 onClick={handleLoadMore}

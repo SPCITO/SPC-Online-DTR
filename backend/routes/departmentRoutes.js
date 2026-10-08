@@ -16,6 +16,33 @@ const {
   manilaDateLabel,
   manilaTimeLabel,
 } = require("../utils/phTime");
+const {
+  parseSourceParam,
+  fetchBiometricSessions,
+  fetchSummaryPage,
+  mapSourceError,
+} = require("../services/attendanceSources");
+
+// M.69: source-aware helpers. Online DTR export behavior is unchanged.
+function sendSourceError(res, err) {
+  const mapped = mapSourceError(err);
+  if (mapped.status === 503) {
+    return res.status(503).json({ message: mapped.message, code: mapped.code });
+  }
+  console.error("Source query error:", mapped);
+  return res.status(500).json({ message: "Failed to fetch logs" });
+}
+
+// "08:01:12 → 17:02:00" per session; multi-session days keep every line.
+function sessionCell(sessions) {
+  return (sessions || [])
+    .map((s) => {
+      const start = s.time_in ? String(s.time_in).slice(11) : "—";
+      const end = s.time_out ? String(s.time_out).slice(11) : "—";
+      return `${start} → ${end}`;
+    })
+    .join("\n");
+}
 const { rowCredit, closedByLabel } = require("../utils/attendanceCredit");
 
 // Rate limiter for exports: 10 per hour per authenticated user
@@ -87,6 +114,61 @@ router.get("/:deptId/logs", verifyToken, requireRole("admin"), async (req, res) 
     const range = manilaRangeFromQuery(req.query);
     const rangeClause = range ? " AND al.time_in >= ? AND al.time_in <= ?" : "";
     const rangeParams = range ? [range.start, range.end] : [];
+    // M.69: source selector — default "online" preserves existing behavior.
+    const parsed = parseSourceParam(req.query.source);
+    if (!parsed.ok) {
+      return res.status(400).json({ message: "Invalid source. Use 'online', 'biometrics' or 'both'." });
+    }
+
+    if (parsed.source !== "online") {
+      const opts = {
+        start: range ? range.start : null,
+        end: range ? range.end : null,
+        deptId,
+        search: req.query.search || "",
+      };
+      if (parsed.source === "biometrics") {
+        const { sessions, total } = await fetchBiometricSessions({
+          ...opts,
+          limit,
+          offset,
+        });
+        return res.json({
+          logs: sessions.map((s) => ({
+            id: s.id,
+            source: s.source,
+            source_id: s.source_id,
+            employee_db_id: s.employee_db_id,
+            name: s.name,
+            employee_id: s.employee_id,
+            role: s.role,
+            department_id: s.department_id,
+            time_in: s.time_in,
+            time_out: s.time_out,
+            closed_by: null,
+            status: s.status,
+            pending: s.pending,
+            no_time_out: s.no_time_out,
+            date: s.date,
+          })),
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+          hasMore: offset + sessions.length < total,
+        });
+      }
+      const { groups, total } = await fetchSummaryPage({ ...opts, page, limit });
+      return res.json({
+        groups,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasMore: offset + groups.length < total,
+      });
+    }
+
 
     // Get total count
     const [[{ total }]] = await db.promise().query(
@@ -136,7 +218,11 @@ router.get("/:deptId/logs", verifyToken, requireRole("admin"), async (req, res) 
     });
 
   } catch (err) {
-    console.error("GET dept logs error:", err);
+    const mapped = mapSourceError(err);
+    if (mapped.status === 503) {
+      return res.status(503).json({ message: mapped.message, code: mapped.code });
+    }
+    console.error("GET dept logs error:", mapped);
     res.status(500).json({ message: "Failed to fetch department logs" });
   }
 });
@@ -152,6 +238,12 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
     if (!type || !['all', 'department'].includes(type)) {
       return res.status(400).json({ message: "Invalid export type. Use 'all' or 'department'." });
     }
+    // M.69: source selector — default "online" keeps the existing export.
+    const parsed = parseSourceParam(req.query.source);
+    if (!parsed.ok) {
+      return res.status(400).json({ message: "Invalid source. Use 'online', 'biometrics' or 'both'." });
+    }
+
 
     // 1. Calculate Date Range — M.39 H1b: Manila calendar windows.
     // Week convention preserved: Monday..Sunday (same rule as before).
@@ -168,6 +260,68 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
       const [phtYear, phtMonth] = philippineDateStr().split("-").map(Number);
       ({ start: startDate, end: endDate } = manilaMonthRange(phtYear, phtMonth));
     }
+    // M.69 — BIOMETRICS export: native dtr_entry sessions (read-only),
+    // labeled with their source and native PK_entry. No online rows, no
+    // fabricated durations.
+    if (parsed.source === "biometrics") {
+      const { sessions } = await fetchBiometricSessions({
+        start: startDate,
+        end: endDate,
+        deptId: deptId ? parseInt(deptId) : null,
+        search: "",
+        limit: 10001,
+        offset: 0,
+      });
+      if (sessions.length > 10000) {
+        return res.status(400).json({
+          message: "Export is too large. Please narrow the date range or select a specific department.",
+        });
+      }
+      const deptNameById = new Map(getAllDepartments().map((d) => [d.id, d.name]));
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "SPC Online DTR";
+      workbook.lastModifiedBy = "Admin";
+      workbook.created = new Date();
+      const sheet = workbook.addWorksheet("Biometrics Sessions");
+      sheet.columns = [
+        { header: "Source", key: "source", width: 12 },
+        { header: "Source ID", key: "source_id", width: 12 },
+        { header: "Employee ID", key: "employee_id", width: 15 },
+        { header: "Name", key: "name", width: 25 },
+        { header: "Role", key: "role", width: 15 },
+        { header: "Department", key: "department", width: 24 },
+        { header: "Date", key: "date", width: 12 },
+        { header: "Time In", key: "time_in", width: 15 },
+        { header: "Time Out", key: "time_out", width: 15 },
+        { header: "Status", key: "status", width: 18 },
+      ];
+      for (const s of sessions) {
+        sheet.addRow({
+          source: s.source,
+          source_id: s.source_id,
+          employee_id: s.employee_id,
+          name: s.name,
+          role: s.role,
+          department: deptNameById.get(Number(s.department_id)) || "Unassigned",
+          date: s.date,
+          time_in: s.time_in ? String(s.time_in).slice(11) : "—",
+          time_out: s.time_out ? String(s.time_out).slice(11) : "MISSING TIMEOUT",
+          status: s.time_out ? "RECORDED" : "MISSING TIMEOUT",
+        });
+      }
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="DTR_Biometrics_${dateRange || "custom"}_${philippineDateStr()}.xlsx"`
+      );
+      await workbook.xlsx.write(res);
+      res.end();
+      return;
+    }
+
 
     // 2. Fetch Data via MySQL JOIN (with optional deptId filter)
     let sql = `
@@ -380,6 +534,50 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
         });
       });
     }
+    // M.69 — BOTH export: the existing Online DTR sheets are kept exactly
+    // as-is; two additive sheets show the combined per-day summary with
+    // every session preserved (never a fabricated merged range).
+    if (parsed.source === "both") {
+      const { groups, total } = await fetchSummaryPage({
+        start: startDate,
+        end: endDate,
+        deptId: deptId ? parseInt(deptId) : null,
+        search: "",
+        page: 1,
+        limit: 10001,
+      });
+      if (total > 10000) {
+        return res.status(400).json({
+          message: "Export is too large. Please narrow the date range or select a specific department.",
+        });
+      }
+      const summaryColumns = [
+        { header: "Employee", key: "name", width: 25 },
+        { header: "Date", key: "date", width: 12 },
+        { header: "Online DTR", key: "online", width: 26 },
+        { header: "Biometrics", key: "biometrics", width: 26 },
+        { header: "Status", key: "status", width: 20 },
+        { header: "Flags", key: "flags", width: 22 },
+      ];
+      const bothSheet = workbook.addWorksheet("Both Summary");
+      bothSheet.columns = summaryColumns.map((c) => ({ ...c }));
+      const mismatchSheet = workbook.addWorksheet("Mismatches Only");
+      mismatchSheet.columns = summaryColumns.map((c) => ({ ...c }));
+
+      for (const g of groups) {
+        const row = {
+          name: g.name,
+          date: g.date,
+          online: sessionCell(g.online) || "—",
+          biometrics: sessionCell(g.biometrics) || "—",
+          status: g.reconciliation.state,
+          flags: (g.reconciliation.flags || []).join(", "),
+        };
+        bothSheet.addRow(row);
+        if (g.reconciliation.state !== "MATCHED") mismatchSheet.addRow(row);
+      }
+    }
+
 
     // 4. Send File
     res.setHeader(

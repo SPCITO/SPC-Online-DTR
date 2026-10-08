@@ -3,7 +3,18 @@ const router = express.Router();
 const db = require("../config/db");
 const { philippineDateStr, manilaMonthRange } = require("../utils/phTime");
 const { getCreditPolicy, isExpired } = require("../utils/attendanceCredit");
+const {
+  parseSourceParam,
+  fetchOnlineSessions,
+  fetchBiometricSessions,
+  groupEmployeeDays,
+  buildDaysFromSessions,
+  mapSourceError,
+} = require("../services/attendanceSources");
 
+// M.69/M.70: the monthly day model is built by
+// attendanceSources.buildDaysFromSessions (pure, unit-tested):
+// per-source min/max bounds, hours never mixing sources.
 // GET MONTHLY LOGS
 router.get("/:employee_db_id/:year/:month", async (req, res) => {
   const { employee_db_id, year, month } = req.params;
@@ -25,6 +36,62 @@ router.get("/:employee_db_id/:year/:month", async (req, res) => {
   // Ownership check: employees can only view their own monthly data
   if (empId !== req.user.id && req.user.role !== "admin") {
     return res.status(403).json({ message: "Forbidden" });
+  }
+
+  // M.69: source selector — default "online" preserves existing behavior.
+  const parsed = parseSourceParam(req.query.source);
+  if (!parsed.ok) {
+    return res.status(400).json({ message: "Invalid source. Use 'online', 'biometrics' or 'both'." });
+  }
+
+  if (parsed.source !== "online") {
+    try {
+      const { start, end } = manilaMonthRange(yr, mo);
+      const opts = { start, end, employeeDbId: empId, limit: null, offset: 0 };
+
+      if (parsed.source === "biometrics") {
+        const { sessions } = await fetchBiometricSessions(opts);
+        const days = buildDaysFromSessions(sessions, { includeSources: true });
+        const determined = days.filter((d) => !d.no_time_out);
+        return res.json({
+          summary: {
+            total_hours: determined.reduce((s, d) => s + (d.hours || 0), 0).toFixed(2),
+            total_days: days.length,
+            pending_days: 0,
+          },
+          days,
+        });
+      }
+
+      // both — group-level: sessions stay separate, state is computed
+      const [onRes, bioRes] = await Promise.all([
+        fetchOnlineSessions(opts),
+        fetchBiometricSessions(opts),
+      ]);
+      const groups = groupEmployeeDays([...onRes.sessions, ...bioRes.sessions]);
+      const days = groups.map((g) => {
+        const day = buildDaysFromSessions([...g.online, ...g.biometrics], { includeSources: true })[0];
+        day.date = g.date;
+        day.reconciliation = g.reconciliation;
+        return day;
+      });
+      const determined = days.filter((d) => !d.pending && !d.no_time_out && d.online && d.online.length > 0);
+      return res.json({
+        summary: {
+          total_hours: determined.reduce((s, d) => s + (d.hours || 0), 0).toFixed(2),
+          total_days: days.length,
+          pending_days: 0,
+        },
+        days,
+      });
+    } catch (err) {
+      const mapped = mapSourceError(err);
+      if (mapped.status === 503) {
+        return res.status(503).json({ message: mapped.message, code: mapped.code });
+      }
+      console.error("GET monthly source logs error:", mapped);
+      return res.status(500).json({ message: "Failed to fetch monthly report" });
+    }
   }
 
   try {

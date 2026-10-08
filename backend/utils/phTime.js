@@ -73,6 +73,36 @@ function manilaDateLabel(value) {
     timeZone: "Asia/Manila",
   });
 }
+/**
+ * Resolve a report/log date window from query params (payroll-safe).
+ * Accepts dateRange=today|week|month OR explicit from/to days (strict
+ * YYYY-MM-DD, Manila calendar days). from/to take precedence; a missing
+ * side falls back to "all history up to"/"from the beginning". Returns
+ * { start, end } Date bounds or null (= no date filter at all).
+ */
+function manilaRangeFromQuery({ dateRange, from, to } = {}) {
+  const isDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ""));
+
+  if (isDay(from) || isDay(to)) {
+    return {
+      start: isDay(from)
+        ? new Date(`${from}T00:00:00+08:00`)
+        : new Date("1970-01-01T00:00:00+08:00"),
+      end: isDay(to)
+        ? new Date(`${to}T23:59:59+08:00`)
+        : new Date(`${philippineDateStr()}T23:59:59+08:00`),
+    };
+  }
+
+  if (dateRange === "today") return manilaDayRange();
+  if (dateRange === "week") return manilaWeekRange();
+  if (dateRange === "month") {
+    const [y, m] = philippineDateStr().split("-").map(Number);
+    return manilaMonthRange(y, m);
+  }
+  return null;
+}
+
 
 /** Time label in the caller's usual display format, interpreted in Asia/Manila. */
 function manilaTimeLabel(value) {
@@ -85,6 +115,7 @@ module.exports = {
   philippineDateStr,
   manilaDayRange,
   manilaMonthRange,
+  manilaRangeFromQuery,
   manilaWeekRange,
   manilaDateLabel,
   manilaTimeLabel,

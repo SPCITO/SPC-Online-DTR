@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import LogSourceSelector from "@/components/LogSourceSelector";
+import type { SourceMode, SummaryGroup } from "@/lib/types";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -25,22 +27,63 @@ function UserLogsContent() {
   const { user } = useAuth();
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [source, setSource] = useState<SourceMode>("online");
+  const [groups, setGroups] = useState<SummaryGroup[]>([]);
   const router = useRouter();
 
-  // FETCH LOGS
+  // M.69: timestamps arrive either as ISO strings (Online DTR) or Manila
+  // wall strings (Biometrics) — parse both safely for display.
+  const toDate = (v: string | Date | null | undefined): Date | null => {
+    if (!v) return null;
+    if (typeof v === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(v)) {
+      return new Date(v.replace(" ", "T") + "+08:00");
+    }
+    return new Date(v);
+  };
+  const sessionLines = (sessions: Array<{ time_in?: string | null; time_out?: string | null }>) =>
+    sessions && sessions.length > 0
+      ? sessions.map((s) => {
+          const start = s.time_in ? String(s.time_in).slice(11, 19) : "—";
+          const end = s.time_out ? String(s.time_out).slice(11, 19) : "MISSING";
+          return `${start} → ${end}`;
+        })
+      : ["—"];
+
+  // FETCH LOGS (M.69: source-aware; default Online DTR unchanged)
+  // M.70: request sequencing prevents a slower previous-source response
+  // from repainting stale attendance data.
+  const requestSeq = useRef(0);
   const fetchLogs = async () => {
     if (!user) return;
 
+    const seq = ++requestSeq.current;
     try {
-      const data = await api.getMyLogs(user.employee_db_id);
+      if (source === "both") {
+        const data = await api.getAttendanceSummary({
+          employee_db_id: user.employee_db_id,
+          limit: 100,
+        });
+        if (seq !== requestSeq.current) return;
+        setGroups(data?.groups || []);
+        setLogs([]);
+        return;
+      }
+      const data = await api.getMyLogs(
+        user.employee_db_id,
+        source === "biometrics" ? { source: "biometrics", limit: 100 } : undefined
+      );
+      if (seq !== requestSeq.current) return;
       // Backend now returns paginated response: { logs, total, page, limit, totalPages }
       const logList = Array.isArray(data) ? data : (data?.logs || []);
       setLogs(logList);
+      setGroups([]);
     } catch (err) {
       console.error("Logs fetch error:", err);
+      if (seq !== requestSeq.current) return;
       setLogs([]);
+      setGroups([]);
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
   };
 
@@ -52,7 +95,8 @@ function UserLogsContent() {
 
       return () => clearInterval(interval);
     }
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, source]);
 
   if (!user) return null;
 
@@ -263,9 +307,82 @@ function UserLogsContent() {
                 Employee Log Records
               </h2>
 
+              <div className="mt-4">
+                <LogSourceSelector value={source} onChange={setSource} />
+              </div>
+
             </div>
 
             <div className="overflow-x-auto">
+
+              {source === "both" ? (
+
+              <table className="w-full min-w-[700px]">
+
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left p-6 text-xs uppercase tracking-[0.18em] text-slate-400 font-semibold">Date</th>
+                    <th className="text-left p-6 text-xs uppercase tracking-[0.18em] text-slate-400 font-semibold">Online DTR</th>
+                    <th className="text-left p-6 text-xs uppercase tracking-[0.18em] text-slate-400 font-semibold">Biometrics</th>
+                    <th className="text-left p-6 text-xs uppercase tracking-[0.18em] text-slate-400 font-semibold">Status</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+
+                  {loading ? (
+
+                    <tr>
+                      <td colSpan={4} className="p-10 text-center text-slate-400">
+                        Loading attendance logs...
+                      </td>
+                    </tr>
+
+                  ) : groups.length > 0 ? (
+
+                    groups.map((g) => (
+                      <tr
+                        key={`${g.employee_db_id}|${g.date}`}
+                        className="border-b border-slate-100/80 hover:bg-slate-50/80 transition-all duration-300"
+                      >
+                        <td className="p-6 font-semibold text-slate-800">{g.date}</td>
+                        <td className="p-6 text-slate-600 font-mono text-xs leading-6">
+                          {sessionLines(g.online).map((line, i) => (<div key={i}>{line}</div>))}
+                        </td>
+                        <td className="p-6 text-slate-600 font-mono text-xs leading-6">
+                          {sessionLines(g.biometrics).map((line, i) => (<div key={i}>{line}</div>))}
+                        </td>
+                        <td className="p-6">
+                          <span
+                            className={`px-4 py-2 rounded-full text-xs font-bold ${
+                              g.reconciliation.state === "MATCHED"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : g.reconciliation.state === "MISSING_TIMEOUT"
+                                ? "bg-rose-100 text-rose-700"
+                                : "bg-amber-100 text-amber-700"
+                            }`}
+                          >
+                            {g.reconciliation.state}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+
+                  ) : (
+
+                    <tr>
+                      <td colSpan={4} className="p-10 text-center text-slate-400">
+                        No attendance logs yet
+                      </td>
+                    </tr>
+
+                  )}
+
+                </tbody>
+
+              </table>
+
+              ) : (
 
               <table className="w-full min-w-[700px]">
 
@@ -328,16 +445,16 @@ function UserLogsContent() {
                         >
 
                           <td className="p-6 font-semibold text-slate-800">
-                            {new Date(log.time_in).toLocaleDateString()}
+                            {toDate(log.time_in)?.toLocaleDateString() ?? log.date ?? "—"}
                           </td>
 
                           <td className="p-6 text-slate-600 font-medium">
-                            {new Date(log.time_in).toLocaleTimeString()}
+                            {toDate(log.time_in)?.toLocaleTimeString() ?? "—"}
                           </td>
 
                           <td className="p-6 text-slate-600 font-medium">
                             {log.time_out
-                              ? new Date(log.time_out).toLocaleTimeString()
+                              ? toDate(log.time_out)?.toLocaleTimeString()
                               : "—"}
                           </td>
 
@@ -383,6 +500,8 @@ function UserLogsContent() {
                 </tbody>
 
               </table>
+
+              )}
 
             </div>
 

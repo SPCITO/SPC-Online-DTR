@@ -1,6 +1,8 @@
 // NEXT_PUBLIC_API_URL is set explicitly in every supported build path
 // (deploy-dtr.sh build-arg, frontend/.env.local, production image). Fall
 // back to same-origin. M.28 cleanup: legacy Render fallback removed.
+import type { SourceMode, SummaryResponse } from "./types";
+
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api`;
 
@@ -157,7 +159,8 @@ export const api = {
     page = 1,
     limit = 50,
     search = "",
-    range?: { dateRange?: string; from?: string; to?: string }
+    range?: { dateRange?: string; from?: string; to?: string },
+    source?: SourceMode
   ) => {
     const queryParams = new URLSearchParams();
     queryParams.append("page", page.toString());
@@ -166,19 +169,61 @@ export const api = {
     if (range?.dateRange) queryParams.append("dateRange", range.dateRange);
     if (range?.from) queryParams.append("from", range.from);
     if (range?.to) queryParams.append("to", range.to);
+    // M.69: source selector — omitted/`online` keeps existing behavior
+    if (source && source !== "online") queryParams.append("source", source);
     return request(`/logs?${queryParams.toString()}`);
   },
 
   getAdminStats: () => request("/admin/stats"),
 
-  getMyLogs: (employee_db_id: number) =>
-    request(`/logs/me/${employee_db_id}`),
+  getMyLogs: (
+    employee_db_id: number,
+    opts?: { source?: SourceMode; page?: number; limit?: number }
+  ) => {
+    const queryParams = new URLSearchParams();
+    if (opts?.source && opts.source !== "online") queryParams.append("source", opts.source);
+    if (opts?.page) queryParams.append("page", String(opts.page));
+    if (opts?.limit) queryParams.append("limit", String(opts.limit));
+    const qs = queryParams.toString();
+    return request(`/logs/me/${employee_db_id}${qs ? `?${qs}` : ""}`);
+  },
 
   getMonthlyLogs: (
     employee_db_id: number,
     year: number,
-    month: number
-  ) => request(`/monthly/${employee_db_id}/${year}/${month}`),
+    month: number,
+    source?: SourceMode
+  ) =>
+    request(
+      `/monthly/${employee_db_id}/${year}/${month}${
+        source && source !== "online" ? `?source=${source}` : ""
+      }`
+    ),
+
+  // M.69: Both/Summary — employee-day groups with source sessions and a
+  // computed reconciliation state. Group-level pagination server-side.
+  getAttendanceSummary: (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    dateRange?: string;
+    from?: string;
+    to?: string;
+    employee_db_id?: number;
+    deptId?: number;
+  }): Promise<SummaryResponse> => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append("page", String(params.page));
+    if (params?.limit) queryParams.append("limit", String(params.limit));
+    if (params?.search) queryParams.append("search", params.search);
+    if (params?.dateRange) queryParams.append("dateRange", params.dateRange);
+    if (params?.from) queryParams.append("from", params.from);
+    if (params?.to) queryParams.append("to", params.to);
+    if (params?.employee_db_id) queryParams.append("employee_db_id", String(params.employee_db_id));
+    if (params?.deptId) queryParams.append("deptId", String(params.deptId));
+    const qs = queryParams.toString();
+    return request(`/attendance/summary${qs ? `?${qs}` : ""}`);
+  },
 
   getEmployees: (params?: {
     page?: number;
@@ -233,6 +278,7 @@ export const api = {
       dateRange?: string;
       from?: string;
       to?: string;
+      source?: SourceMode;
     }
   ) => {
     const queryParams = new URLSearchParams();
@@ -241,6 +287,7 @@ export const api = {
     if (params?.dateRange) queryParams.append("dateRange", params.dateRange);
     if (params?.from) queryParams.append("from", params.from);
     if (params?.to) queryParams.append("to", params.to);
+    if (params?.source && params.source !== "online") queryParams.append("source", params.source);
     const query = queryParams.toString();
     return request(
       `/departments/${deptId}/logs${query ? `?${query}` : ""}`
@@ -255,6 +302,7 @@ export const api = {
     from?: string;
     to?: string;
     label?: string;
+    source?: SourceMode;
   } = {}) => {
     const params = new URLSearchParams();
     params.append("type", opts.deptId ? "department" : "all");
@@ -262,6 +310,7 @@ export const api = {
     if (opts.dateRange) params.append("dateRange", opts.dateRange);
     if (opts.from) params.append("from", opts.from);
     if (opts.to) params.append("to", opts.to);
+    if (opts.source && opts.source !== "online") params.append("source", opts.source);
     const res = await fetch(
       `${API_URL}/departments/export?${params.toString()}`,
       { credentials: "include" }
@@ -271,8 +320,9 @@ export const api = {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
+    const sourceTag = opts.source && opts.source !== "online" ? `${opts.source}_` : "";
     link.download =
-      opts.label || `DTR_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      opts.label || `DTR_Report_${sourceTag}${new Date().toISOString().slice(0, 10)}.xlsx`;
     link.click();
     window.URL.revokeObjectURL(url);
   },

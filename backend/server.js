@@ -73,6 +73,12 @@ app.set("trust proxy", 1);
 	// DEPARTMENT ROUTES (PROTECTED)
 	const departmentRoutes = require("./routes/departmentRoutes");
 	app.use("/api/departments", departmentRoutes);
+	// BOTH/SUMMARY ATTENDANCE (M.69) — read-only source aggregation,
+	// self-or-admin scoped inside the route. Mounted before the admin
+	// attendance routes so /summary is reachable by employees.
+	const summaryRoutes = require("./routes/summaryRoutes");
+	app.use("/api/attendance", verifyToken, summaryRoutes);
+
 
 	// SYNC ROUTES (API key auth — machine-to-machine, bypasses CSRF/CORS)
 	const { verifySyncKey } = require("./middleware/syncAuth");

@@ -1,6 +1,45 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
+const { manilaRangeFromQuery } = require("../utils/phTime");
+const {
+  parseSourceParam,
+  fetchBiometricSessions,
+  fetchSummaryPage,
+  mapSourceError,
+} = require("../services/attendanceSources");
+
+// M.69: source-aware error/response helpers. The Online DTR query
+// behavior below is unchanged; `source` only routes to the read-only
+// biometric source or the Both/Summary aggregation.
+function sendSourceError(res, err) {
+  const mapped = mapSourceError(err);
+  if (mapped.status === 503) {
+    return res.status(503).json({ message: mapped.message, code: mapped.code });
+  }
+  console.error("GET source logs error:", mapped);
+  return res.status(500).json({ message: "Failed to fetch logs" });
+}
+
+function biometricRowToApi(row) {
+  return {
+    id: row.id,
+    source: row.source,
+    source_id: row.source_id,
+    time_in: row.time_in,
+    time_out: row.time_out,
+    closed_by: null,
+    status: row.status,
+    pending: row.pending,
+    no_time_out: row.no_time_out,
+    employee_db_id: row.employee_db_id,
+    employee_id: row.employee_id,
+    role: row.role,
+    name: row.name,
+    department_id: row.department_id,
+    date: row.date,
+  };
+}
 const requireRole = require("../middleware/requireRole");
 
 // ==========================
@@ -11,6 +50,37 @@ router.get("/", requireRole("admin"), async (req, res) => {
   let limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
   const search = req.query.search || "";
   const offset = (page - 1) * limit;
+  // Server-side date window (today|week|month or explicit from/to days) —
+  // payroll-safe: the database filters, never a partially-loaded page.
+  const range = manilaRangeFromQuery(req.query);
+
+  // M.69: source selector — default "online" preserves existing behavior.
+  const parsed = parseSourceParam(req.query.source);
+  if (!parsed.ok) {
+    return res.status(400).json({ message: "Invalid source. Use 'online', 'biometrics' or 'both'." });
+  }
+
+
+    if (parsed.source === "biometrics") {
+      const { sessions } = await fetchBiometricSessions({
+        start: range ? range.start : null,
+        end: range ? range.end : null,
+        search,
+        limit,
+        offset,
+      });
+      return res.json(sessions.map(biometricRowToApi));
+    }
+    if (parsed.source === "both") {
+      const { groups, total } = await fetchSummaryPage({
+        start: range ? range.start : null,
+        end: range ? range.end : null,
+        search,
+        page,
+        limit,
+      });
+      return res.json({ groups, total, page, limit, totalPages: Math.ceil(total / limit) });
+    }
 
   try {
     let sql = `
@@ -40,6 +110,9 @@ router.get("/", requireRole("admin"), async (req, res) => {
     const [rows] = await db.promise().query(sql, params);
 
     const transformed = (rows || []).map(log => ({
+      // M.69: additive source metadata (response-level only, never persisted)
+      source: "ONLINE_DTR",
+      source_id: log.id,
       id: log.id,
       time_in: log.time_in,
       time_out: log.time_out,
@@ -52,8 +125,7 @@ router.get("/", requireRole("admin"), async (req, res) => {
 
     res.json(transformed);
   } catch (err) {
-    console.error("GET logs error:", err);
-    return res.status(500).json({ message: "Failed to fetch logs" });
+    return sendSourceError(res, err);
   }
 });
 
@@ -72,6 +144,35 @@ router.get("/me/:employee_db_id", async (req, res) => {
   let page = Math.max(1, parseInt(req.query.page) || 1);
   let limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
   const offset = (page - 1) * limit;
+  // M.69: source selector (self-scoped for all sources).
+  const parsed = parseSourceParam(req.query.source);
+  if (!parsed.ok) {
+    return res.status(400).json({ message: "Invalid source. Use 'online', 'biometrics' or 'both'." });
+  }
+
+
+    if (parsed.source === "biometrics") {
+      const { sessions, total } = await fetchBiometricSessions({
+        employeeDbId: parseInt(employee_db_id, 10),
+        limit,
+        offset,
+      });
+      return res.json({
+        logs: sessions.map(biometricRowToApi),
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      });
+    }
+    if (parsed.source === "both") {
+      const { groups, total } = await fetchSummaryPage({
+        employeeDbId: parseInt(employee_db_id, 10),
+        page,
+        limit,
+      });
+      return res.json({ groups, total, page, limit, totalPages: Math.ceil(total / limit) });
+    }
 
   try {
     // Get total count
@@ -93,6 +194,9 @@ router.get("/me/:employee_db_id", async (req, res) => {
     );
 
     const logs = (rows || []).map(log => ({
+      // M.69: additive source metadata (response-level only, never persisted)
+      source: "ONLINE_DTR",
+      source_id: log.id,
       id: log.id,
       time_in: log.time_in,
       time_out: log.time_out,
@@ -108,8 +212,7 @@ router.get("/me/:employee_db_id", async (req, res) => {
       totalPages: Math.ceil(total / limit),
     });
   } catch (err) {
-    console.error("GET user logs error:", err);
-    return res.status(500).json({ message: "Server error" });
+    return sendSourceError(res, err);
   }
 });
 
