@@ -83,7 +83,7 @@ router.post("/time-in", dtrLimiter, async (req, res) => {
             `You have an open session from ${plan.day} with no Time Out recorded. ` +
             "If you forgot to time out, confirm to start a new session — that record " +
             'will remain blank ("No Time Out") and must be corrected via a DTR ' +
-            "Correction Form with the Payroll Department. If your shift is still " +
+            "Correction Form with HR. If your shift is still " +
             "ongoing, please Time Out first.",
           previous_day_pending: true,
           day: plan.day,
@@ -163,7 +163,7 @@ router.post("/time-out", dtrLimiter, async (req, res) => {
       return res.status(409).json({
         message:
           `Your session from ${plan.day} has passed the 24-hour limit and can no longer be timed out. ` +
-          "Please file a DTR Correction Form with the Payroll Department to correct this record.",
+          "Please file a DTR Correction Form with HR to correct this record.",
         no_time_out: true,
         attendance_date: plan.day,
       });

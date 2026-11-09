@@ -21,7 +21,7 @@ const verifyToken = async (req, res, next) => {
 
     const [rows] = await db.promise().query(
       `
-      SELECT active_session, session_expires_at, must_change_password
+      SELECT active_session, session_expires_at, must_change_password, role
       FROM employees
       WHERE id = ? AND is_active = 1
       LIMIT 1
@@ -64,15 +64,36 @@ const verifyToken = async (req, res, next) => {
       }
     }
 
-    req.user = decoded;
+    // M.52: the JWT's role claim is a login-time snapshot. The DB row is
+    // already fetched above for session validation (zero extra queries), so
+    // the DB role is authoritative: promotions/demotions apply on the very
+    // next request instead of after re-login. Before this, a promoted admin
+    // kept getting 403 on admin panels until logging out/in, and a demoted
+    // admin kept admin API power until session expiry.
+    req.user = { ...decoded, role: rows[0].role };
 
     next();
 
   } catch (err) {
     console.error("verifyToken error:", err);
 
-    return res.status(401).json({
-      message: "Invalid token",
+    // M.44: classify failures. Genuine token problems stay 401; database/pool
+    // infrastructure failures return 503 so pool pressure never masquerades as
+    // an unauthenticated session. No internals are leaked to the client.
+    const jwtFailure =
+      err.name === "JsonWebTokenError" ||
+      err.name === "TokenExpiredError" ||
+      err.name === "NotBeforeError";
+
+    if (jwtFailure) {
+      return res.status(401).json({
+        message: "Invalid token",
+      });
+    }
+
+    res.setHeader("Retry-After", "5");
+    return res.status(503).json({
+      message: "Service temporarily unavailable. Please try again.",
     });
   }
 };

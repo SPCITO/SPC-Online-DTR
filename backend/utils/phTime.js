@@ -18,6 +18,17 @@ function philippineDateStr(now = new Date()) {
 }
 
 /**
+ * Deterministic technical boundary timestamp for a Manila calendar day:
+ * 23:59:59 of that day, as a literal DATETIME string ("YYYY-MM-DD HH:MM:SS").
+ * Literal strings are stored as-is by the mysql2 driver (same convention as
+ * syncService.buildDatetime) — no UTC conversion is involved. Used to keep
+ * an attendance record from ever spanning multiple calendar days.
+ */
+function manilaDayEnd(dayStr) {
+  return `${dayStr} 23:59:59`;
+}
+
+/**
  * The Manila calendar-day window containing `now`, as Date bounds.
  * The window rolls over at 00:00 Asia/Manila (not at the container's
  * UTC 08:00 equivalent).
@@ -73,6 +84,7 @@ function manilaDateLabel(value) {
     timeZone: "Asia/Manila",
   });
 }
+
 /**
  * Resolve a report/log date window from query params (payroll-safe).
  * Accepts dateRange=today|week|month OR explicit from/to days (strict
@@ -103,7 +115,6 @@ function manilaRangeFromQuery({ dateRange, from, to } = {}) {
   return null;
 }
 
-
 /** Time label in the caller's usual display format, interpreted in Asia/Manila. */
 function manilaTimeLabel(value) {
   return new Date(value).toLocaleTimeString(undefined, {
@@ -113,10 +124,11 @@ function manilaTimeLabel(value) {
 
 module.exports = {
   philippineDateStr,
+  manilaDayEnd,
   manilaDayRange,
   manilaMonthRange,
-  manilaRangeFromQuery,
   manilaWeekRange,
+  manilaRangeFromQuery,
   manilaDateLabel,
   manilaTimeLabel,
 };

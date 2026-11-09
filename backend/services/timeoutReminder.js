@@ -1,21 +1,27 @@
 // ============================================================
 // SPC Online DTR — 9:00 PM Timeout Reminder Service
 //
-// Sends an email to employees who timed in today but have
-// not yet timed out. Runs daily at 9:00 PM Philippine time.
+// Sends an email to employees who have an OPEN session still inside
+// the Time Out window but have not yet timed out. Runs daily at
+// 9:00 PM Philippine time.
 //
 // Duplicate prevention: uses notification_log table with a
 // UNIQUE constraint on (employee_id, notification_date).
+//
+// M.85 eligibility: only sessions the employee can STILL time out are
+// reminded. A session past maxSessionHours() is hard-blocked ("No Time
+// Out" blank record) and is handled by the one-time notice service
+// (noTimeOutNotifier) — never by this recurring reminder.
 // ============================================================
 
 const nodemailer = require("nodemailer");
 const db = require("../config/db");
+const { maxSessionHours } = require("../utils/attendanceCredit");
 
 // ---------- Philippine Time Helper ----------
 
-function getPhilippineDate() {
+function getPhilippineDate(now = new Date()) {
   // Return today's date string in Asia/Manila timezone (YYYY-MM-DD)
-  const now = new Date();
   const phDate = now.toLocaleDateString("en-CA", {
     timeZone: "Asia/Manila",
   });
@@ -44,23 +50,37 @@ function createTransport() {
 
 // ---------- Email Template ----------
 
-function buildReminderEmail(employeeName, timeIn) {
-  const timeInStr = new Date(timeIn).toLocaleString("en-PH", {
+function buildReminderEmail(employeeName, timeIn, now = new Date()) {
+  const timeStr = new Date(timeIn).toLocaleString("en-PH", {
     timeZone: "Asia/Manila",
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
+  });
+  // Full calendar date of the time-in (e.g. "October 1, 2026") so the
+  // reminder always states the date, not just the time.
+  const dateStr = new Date(timeIn).toLocaleDateString("en-PH", {
+    timeZone: "Asia/Manila",
     year: "numeric",
     month: "long",
     day: "numeric",
   });
+  // M.38b: wording must match when the open session actually started —
+  // overnight / multi-day sessions must not claim "today".
+  const inDate = new Date(timeIn).toLocaleDateString("en-CA", {
+    timeZone: "Asia/Manila",
+  });
+  const whenPhrase =
+    inDate === getPhilippineDate(now)
+      ? `today (${dateStr}) at ${timeStr}`
+      : `on ${dateStr} at ${timeStr}`;
 
   return {
     subject: "DTR Reminder: Missing Time-Out",
     text: [
       `Dear ${employeeName},`,
       "",
-      `Our records show that you timed in today at ${timeInStr} but have not yet recorded a time-out.`,
+      `Our records show that you timed in ${whenPhrase} but have not yet recorded a time-out.`,
       "",
       "Please complete your time-out according to school procedure.",
       "",
@@ -73,8 +93,20 @@ function buildReminderEmail(employeeName, timeIn) {
 
 // ---------- Main Reminder Logic ----------
 
-async function runTimeoutReminder() {
-  const today = getPhilippineDate();
+async function runTimeoutReminder(now = new Date()) {
+  // M.37: explicit opt-in gate — merely configuring SMTP credentials must
+  // NEVER auto-enable production reminders. Automated reminders stay OFF
+  // until explicitly authorized (set SMTP_REMINDERS_ENABLED=1 after the
+  // controlled single-recipient test is approved).
+  if (process.env.SMTP_REMINDERS_ENABLED !== "1") {
+    console.warn(
+      "[Timeout Reminder] Automated reminders disabled " +
+        "(set SMTP_REMINDERS_ENABLED=1 to activate after approval). Skipping."
+    );
+    return { sent: 0, skipped: 0, errors: 0, reason: "reminders_disabled" };
+  }
+
+  const today = getPhilippineDate(now);
   const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER;
 
   console.log(`[Timeout Reminder] Running for date: ${today}`);
@@ -89,26 +121,36 @@ async function runTimeoutReminder() {
   }
 
   // 2. Find eligible employees:
-  //    - timed in today (Philippine date)
-  //    - time_out IS NULL
+  //    - has an OPEN time-in session still INSIDE the Time Out window
+  //      (M.85: sessions past maxSessionHours() are hard-blocked — the
+  //      employee can no longer record a Time Out for them, so reminding
+  //      them daily would only contradict the one-time no-time-out notice.
+  //      Those sessions stay handled by noTimeOutNotifier. The cutoff is
+  //      the same authoritative rule as planTimeOut/isExpired: a session
+  //      is remindable while now <= time_in + maxSessionHours().)
+  //    - M.38b overnight / multi-day sessions within the window are
+  //      still reminded (not just today's time-ins).
   //    - active employee
   //    - has usable email
+  //    - aggregate form is ONLY_FULL_GROUP_BY-safe and picks the EARLIEST
+  //      remindable open session per employee
+  const cutoff = new Date(now.getTime() - maxSessionHours() * 3600000);
   const [rows] = await db.promise().query(
-    `SELECT al.id AS attendance_id,
-            al.time_in,
+    `SELECT MIN(al.time_in) AS time_in,
             e.id AS employee_id,
             e.name,
             e.email
      FROM attendance_logs al
      JOIN employees e ON al.employee_db_id = e.id
-     WHERE DATE(al.time_in) = ?
-       AND al.time_in IS NOT NULL
+     WHERE al.time_in IS NOT NULL
        AND al.time_out IS NULL
+       AND DATE(al.time_in) <= ?
+       AND al.time_in >= ?
        AND e.is_active = 1
        AND e.email IS NOT NULL
        AND TRIM(e.email) != ''
-     GROUP BY e.id`,
-    [today]
+     GROUP BY e.id, e.name, e.email`,
+    [today, cutoff]
   );
 
   if (rows.length === 0) {
@@ -143,7 +185,7 @@ async function runTimeoutReminder() {
       }
 
       // 3b. Send the reminder email
-      const email = buildReminderEmail(row.name, row.time_in);
+      const email = buildReminderEmail(row.name, row.time_in, now);
       await transporter.sendMail({
         from: fromAddress,
         to: row.email,
@@ -183,4 +225,6 @@ async function runTimeoutReminder() {
   return { sent, skipped, errors };
 }
 
-module.exports = { runTimeoutReminder };
+// createTransport is exported for the controlled single-recipient test
+// (backend/scripts/testEmail.js) so both paths share one transport config.
+module.exports = { runTimeoutReminder, buildReminderEmail, createTransport };

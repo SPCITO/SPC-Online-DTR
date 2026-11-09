@@ -9,10 +9,15 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
 
   waitForConnections: true,
-  connectionLimit: 10,
+  // M.44: raised from 10 after M.43 measured pool saturation at ~60 in-flight
+  // roundtrips (777 spurious auth failures, 859 queue rejections). 20 active
+  // connections is safe against MySQL max_connections=151 (observed peak 18).
+  connectionLimit: 20,
   maxIdle: 10,
   idleTimeout: 60000,
-  queueLimit: 50,
+  // M.44: raised from 50 — queue entries hold no MySQL connections; a deeper
+  // queue converts burst rejections into short waits (~30ms at 20 workers).
+  queueLimit: 100,
   connectTimeout: 10000,
 
   charset: "utf8mb4",

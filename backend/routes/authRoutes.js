@@ -4,7 +4,7 @@ const db = require("../config/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { v4: uuidv4 } = require("uuid");
-const rateLimit = require("express-rate-limit");
+const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
 const logSecurityEvent = require("../utils/securityLogger");
 const verifyToken = require("../middleware/authMiddleware");
 
@@ -35,14 +35,19 @@ const CSRF_COOKIE_OPTIONS = {
   path: "/",
 };
 
-// Rate limiter for login: 20 attempts per 15 minutes per IP
-// IP-based because user is not yet authenticated at login time.
+// Rate limiter for login: 30 attempts per 15 minutes per normalized username + IP.
+// Keyed by normalized username + request IP because login is pre-authentication:
+// the submitted username identifies the bucket. This prevents different employees
+// behind a shared proxy/NAT from consuming one shared login bucket.
+// The key contains no passwords, tokens, cookies, or other secrets.
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 30,
   message: { message: "Too many login attempts. Please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) =>
+    `${String(req.body?.username ?? "").trim().toLowerCase()}|${ipKeyGenerator(req.ip)}`,
 });
 
 // Rate limiter for password change: 5 attempts per 15 minutes per authenticated user
@@ -72,8 +77,8 @@ router.post("/login", loginLimiter, async (req, res) => {
       `
       SELECT
           e.*,
-          d.fullname,
-          d.empid,
+          COALESCE(d.fullname, e.name) AS fullname,
+          COALESCE(d.empid, e.employee_id) AS empid,
           d.FK_dept
       FROM employees e
       LEFT JOIN dtr_user d
@@ -223,8 +228,8 @@ router.get("/me", verifyToken, async (req, res) => {
           e.username,
           e.role,
           e.must_change_password,
-          d.empid,
-          d.fullname,
+          COALESCE(d.empid, e.employee_id) AS empid,
+          COALESCE(d.fullname, e.name) AS fullname,
           d.FK_dept
       FROM employees e
       LEFT JOIN dtr_user d
@@ -293,9 +298,12 @@ router.post("/change-password", verifyToken, changePasswordLimiter, async (req, 
     }
 
     // Verify current password
+    // M.45f: 400 (not 401) — a wrong current password is a validation error,
+    // not a dead session. As 401 it was swallowed by the frontend's session
+    // handler which faked success and stranded users in a password-change loop.
     const valid = await bcrypt.compare(currentPassword, rows[0].password);
     if (!valid) {
-      return res.status(401).json({ message: "Current password is incorrect" });
+      return res.status(400).json({ message: "Current password is incorrect" });
     }
 
     // Hash and update new password, clear must_change_password flag

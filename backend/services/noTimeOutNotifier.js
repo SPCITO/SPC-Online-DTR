@@ -6,7 +6,7 @@
 // Out" (time_out stays NULL, hours stay blank) and Time Out is
 // hard-blocked for that session. This service sends the employee ONE
 // professional notice that they must file a DTR Correction Form with
-// the Payroll Department.
+// HR (technical concerns route to the IT Office).
 //
 // Idempotence: attendance_logs.notice_sent_at marks the session as
 // processed (email sent OR no email on file). The UPDATE is guarded by
@@ -52,10 +52,10 @@ function buildNoTimeOutEmail(employeeName, timeIn) {
       "Time Out normally for your succeeding work days.",
       "",
       "To have this entry corrected, please accomplish a DTR Correction Form and",
-      "submit it to the Payroll Department for processing.",
+      "submit it to HR for processing.",
       "",
-      "If you believe this notice was sent in error, please coordinate with the",
-      "Payroll Department.",
+      "If you believe this notice was sent in error or have other technical",
+      "concerns, please coordinate with the IT Office.",
       "",
       "This is an automated notice from the SPC Online DTR System.",
       "",

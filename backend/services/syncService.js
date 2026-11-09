@@ -31,10 +31,14 @@ const { computeSourceHash } = require("../sync/syncHash");
 
 /**
  * Resolve a dtr_user_id to an employees.id.
+ *
+ * Only ACTIVE accounts resolve. A deactivated account (e.g. a resigned
+ * employee) must never receive attendance records — processSyncEvent
+ * turns the inactive case into a terminal policy skip.
  */
 async function resolveEmployeeId(dtrUserId) {
   const [rows] = await db.promise().query(
-    "SELECT id FROM employees WHERE dtr_user_id = ? LIMIT 1",
+    "SELECT id FROM employees WHERE dtr_user_id = ? AND is_active = 1 LIMIT 1",
     [dtrUserId]
   );
   return rows.length > 0 ? rows[0].id : null;
@@ -139,9 +143,26 @@ async function processSyncEvent(event) {
     // Fall through to create a new record
   }
 
-  // 3. Resolve employee
+  // 3. Resolve employee (active accounts only — see resolveEmployeeId)
   const employeeDbId = await resolveEmployeeId(dtr_user_id);
   if (!employeeDbId) {
+    // Distinguish "not provisioned" (failed — agent retries) from
+    // "account deactivated" (terminal — agent never retries). A
+    // deactivated account, e.g. a resigned employee, must never
+    // accumulate attendance records. "skipped_business_decision" is the
+    // agent's terminal policy-skip status; any other non-"synced" status
+    // would be retried on every run.
+    const [acctRows] = await db.promise().query(
+      "SELECT id FROM employees WHERE dtr_user_id = ? LIMIT 1",
+      [dtr_user_id]
+    );
+    if (acctRows.length > 0) {
+      return {
+        source_pk_entry,
+        status: "skipped_business_decision",
+        message: `Employee account for dtr_user_id=${dtr_user_id} is inactive — attendance not created`,
+      };
+    }
     return {
       source_pk_entry,
       status: "failed",

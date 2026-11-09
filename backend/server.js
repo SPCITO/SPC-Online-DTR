@@ -73,12 +73,23 @@ app.set("trust proxy", 1);
 	// DEPARTMENT ROUTES (PROTECTED)
 	const departmentRoutes = require("./routes/departmentRoutes");
 	app.use("/api/departments", departmentRoutes);
+
+	// NOTIFICATION HISTORY (PROTECTED) — M.38c: admin-only read-only view of
+	// notification_log (the reminder dedup log) so admins can self-check
+	// who was reminded without asking anyone.
+	const notificationRoutes = require("./routes/notificationRoutes");
+	app.use("/api/notifications", verifyToken, notificationRoutes);
+
 	// BOTH/SUMMARY ATTENDANCE (M.69) — read-only source aggregation,
 	// self-or-admin scoped inside the route. Mounted before the admin
 	// attendance routes so /summary is reachable by employees.
 	const summaryRoutes = require("./routes/summaryRoutes");
 	app.use("/api/attendance", verifyToken, summaryRoutes);
 
+	// ATTENDANCE CORRECTIONS (ADMIN ONLY) — narrowly scoped Time Out
+	// correction with full audit trail (attendance_corrections).
+	const attendanceRoutes = require("./routes/attendanceRoutes");
+	app.use("/api/attendance", verifyToken, requireRole("admin"), attendanceRoutes);
 
 	// SYNC ROUTES (API key auth — machine-to-machine, bypasses CSRF/CORS)
 	const { verifySyncKey } = require("./middleware/syncAuth");
@@ -158,9 +169,31 @@ app.set("trust proxy", 1);
 	    }, { timezone: "Asia/Manila" });
 
 	    console.log("✅ Timeout reminder scheduled (9:00 PM PHT daily)");
-	  } catch (err) {
-	    console.warn("⚠️ Timeout reminder scheduler failed to initialize:", err.message);
-	  }
+
+    // 24-hour "No Time Out" notifier (payroll model): hourly scan for
+    // sessions that passed their window without a Time Out — the record
+    // stays BLANK ("No Time Out") and the employee is emailed once to
+    // file a DTR Correction Form. Idempotent (notice_sent_at marker).
+    const { runNoTimeOutNotices } = require("./services/noTimeOutNotifier");
+
+    cron.schedule("0 * * * *", async () => {
+      console.log("[Scheduler] hourly no-time-out notice scan");
+      try {
+        await runNoTimeOutNotices();
+      } catch (err) {
+        console.error("[Scheduler] No-time-out notifier error:", err.message);
+      }
+    }, { timezone: "Asia/Manila" });
+
+    // Startup catch-up: covers downtime across the 24h mark. Idempotent.
+    runNoTimeOutNotices().catch((err) =>
+      console.error("[Scheduler] Startup notifier error:", err.message)
+    );
+
+    console.log("✅ No-time-out notifier scheduled (hourly PHT) + startup catch-up");
+  } catch (err) {
+    console.warn("⚠️ Scheduler failed to initialize:", err.message);
+  }
 	});
 
 	// ========== GRACEFUL SHUTDOWN ==========

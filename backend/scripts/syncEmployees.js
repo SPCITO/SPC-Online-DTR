@@ -28,13 +28,14 @@ const generateUsername = (fullname) => {
     .replace(/\s+/g, ".");
 };
 
-const query = (sql, params = []) =>
-  new Promise((resolve, reject) => {
-    db.query(sql, params, (err, result) => {
-      if (err) return reject(err);
-      resolve(result);
-    });
-  });
+// M.45h: config/db.js exports a promise-only query(sql, params) wrapper —
+// the old callback style (db.query(sql, params, cb)) never invoked the
+// callback and hung the script at the first query. mysql2 promise queries
+// resolve to [rows, fields]; the script expects rows only.
+const query = async (sql, params = []) => {
+  const [rows] = await db.query(sql, params);
+  return rows;
+};
 
 const syncEmployees = async () => {
   try {
@@ -53,6 +54,7 @@ const syncEmployees = async () => {
     let deactivated = 0;
     let reactivated = 0;
     let skipped = 0;
+    let skippedInactive = 0;
 
     // -------------------------------------------------------
     // STEP 2: Process inactive users (deactivate existing, create missing)
@@ -110,14 +112,21 @@ const syncEmployees = async () => {
 
       if (existing.length > 0) {
         // --- Existing account ---
-        // Reactivate if previously deactivated
+        // M.45h: reactivation is OFF by default. Admins can deactivate
+        // accounts from the Online DTR while the legacy identity stays
+        // active (duplicate/junk cleanup) — auto-reactivation would undo
+        // that. Opt in with SYNC_ALLOW_REACTIVATE=1.
         if (existing[0].is_active === 0) {
-          await query(
-            `UPDATE employees SET is_active = 1 WHERE id = ?`,
-            [existing[0].id]
-          );
-          reactivated++;
-          console.log(`🔄 Reactivated: ${user.fullname}`);
+          if (process.env.SYNC_ALLOW_REACTIVATE === "1") {
+            await query(
+              `UPDATE employees SET is_active = 1 WHERE id = ?`,
+              [existing[0].id]
+            );
+            reactivated++;
+            console.log(`🔄 Reactivated: ${user.fullname}`);
+          } else {
+            skippedInactive++;
+          }
         } else {
           skipped++;
         }
@@ -178,11 +187,13 @@ const syncEmployees = async () => {
     console.log(`   Reactivated:       ${reactivated}`);
     console.log(`   Deactivated:       ${deactivated}`);
     console.log(`   Skipped (existing): ${skipped}`);
+    console.log(`   Left inactive (admin-disabled): ${skippedInactive}`);
     console.log("========================================\n");
   } catch (err) {
     console.error("Sync failed:", err);
   } finally {
-    db.end();
+    // M.45h: config/db.js has no end() — close the pool so the process exits.
+    await db.pool.end();
   }
 };
 

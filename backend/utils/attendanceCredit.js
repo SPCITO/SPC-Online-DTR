@@ -21,7 +21,7 @@
 // a configuration change, not a code change.
 // ============================================================
 
-const { philippineDateStr } = require("./phTime");
+const { philippineDateStr, manilaDayEnd } = require("./phTime");
 
 /**
  * Maximum legitimate session span in hours (default 24, configurable via
@@ -148,12 +148,16 @@ function rowCredit(row, now = new Date()) {
  * PAYROLL RULE: once the window passes, the record is HARD-BLOCKED —
  * Time Out can no longer be recorded through the system. The record
  * stays BLANK ("No Time Out"), the employee is notified, and the school's
- * DTR Correction Form (via Payroll) is the only way to fix it. Nothing is
+ * DTR Correction Form (via HR) is the only way to fix it. Nothing is
  * ever written or fabricated here.
  *
  * @param {Date|string} openTimeIn — attendance_logs.time_in of the open row
  * @param {Date} [now]             — evaluation instant
- * @returns {{action: "user_close"|"hard_block", day: string}}
+ * @returns {{action: "user_close", day: string, closeAt: null} |
+ *          {action: "hard_block", day: string}}
+ *   user_close → closeAt is null: the caller stamps the employee's REAL
+ *   Time Out at write time (never a placeholder). hard_block carries no
+ *   timestamp because nothing is ever written to the record.
  */
 function planTimeOut(openTimeIn, now = new Date()) {
   const startMs = new Date(openTimeIn).getTime();
@@ -162,9 +166,38 @@ function planTimeOut(openTimeIn, now = new Date()) {
   const withinWindow = now.getTime() <= startMs + maxSessionHours() * 3600000;
 
   if (withinWindow) {
-    return { action: "user_close", day: recordDay };
+    return { action: "user_close", day: recordDay, closeAt: null };
   }
   return { action: "hard_block", day: recordDay };
+}
+
+/**
+ * Decide whether the SYSTEM auto-close backstop should close an open
+ * attendance record, and at which technical timestamp. (Pure —
+ * deterministic, dependency-free.)
+ *
+ * SYSTEM-INITIATED ONLY (M.38 end-of-day backstop) — kept separate from
+ * the employee-facing planTimeOut() payroll rule above. The backstop
+ * writes time_out = 23:59:59 of the record's OWN Manila day (month and
+ * year boundaries preserved) with closed_by = 'auto'. That timestamp is
+ * a technical record-keeping boundary — it is NOT claimed work time and
+ * is never credited as such (see rowCredit's handling of closed_by).
+ *
+ * @param {Date|string} openTimeIn — attendance_logs.time_in of the open row
+ * @param {Date} [now]             — evaluation instant
+ * @returns {{action: "auto_close", day: string, closeAt: string} |
+ *          {action: "none", day: string, closeAt: null}}
+ */
+function planAutoClose(openTimeIn, now = new Date()) {
+  const startMs = new Date(openTimeIn).getTime();
+  const recordDay = philippineDateStr(new Date(openTimeIn));
+
+  const withinWindow = now.getTime() <= startMs + maxSessionHours() * 3600000;
+
+  if (withinWindow) {
+    return { action: "none", day: recordDay, closeAt: null };
+  }
+  return { action: "auto_close", day: recordDay, closeAt: manilaDayEnd(recordDay) };
 }
 
 /** True when an open session has passed the legitimate window. */
@@ -179,7 +212,7 @@ function isExpired(timeIn, now = new Date()) {
  * A FORGOTTEN TIME OUT NEVER BLOCKS THE NEXT WORK DAY: a record left open
  * from a PREVIOUS Manila day is a missed Time Out, not a live session —
  * the employee must be able to Time In again immediately (the DTR
- * Correction Form with Payroll is slow and must not be a prerequisite for
+ * Correction Form with HR is slow and must not be a prerequisite for
  * recording attendance). The abandoned record stays BLANK ("No Time Out");
  * nothing is ever written to it.
  *
@@ -222,6 +255,7 @@ module.exports = {
   closedByLabel,
   rowCredit,
   planTimeOut,
+  planAutoClose,
   planTimeIn,
   isExpired,
   maxSessionHours,

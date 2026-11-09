@@ -16,6 +16,7 @@ const {
   manilaDateLabel,
   manilaTimeLabel,
 } = require("../utils/phTime");
+const { rowCredit, closedByLabel } = require("../utils/attendanceCredit");
 const {
   parseSourceParam,
   fetchBiometricSessions,
@@ -43,7 +44,6 @@ function sessionCell(sessions) {
     })
     .join("\n");
 }
-const { rowCredit, closedByLabel } = require("../utils/attendanceCredit");
 
 // Rate limiter for exports: 10 per hour per authenticated user
 const exportLimiter = rateLimit({
@@ -114,6 +114,7 @@ router.get("/:deptId/logs", verifyToken, requireRole("admin"), async (req, res) 
     const range = manilaRangeFromQuery(req.query);
     const rangeClause = range ? " AND al.time_in >= ? AND al.time_in <= ?" : "";
     const rangeParams = range ? [range.start, range.end] : [];
+
     // M.69: source selector — default "online" preserves existing behavior.
     const parsed = parseSourceParam(req.query.source);
     if (!parsed.ok) {
@@ -169,7 +170,6 @@ router.get("/:deptId/logs", verifyToken, requireRole("admin"), async (req, res) 
       });
     }
 
-
     // Get total count
     const [[{ total }]] = await db.promise().query(
       `SELECT COUNT(*) AS total
@@ -182,7 +182,8 @@ router.get("/:deptId/logs", verifyToken, requireRole("admin"), async (req, res) 
 
     const [rows] = await db.promise().query(
       `SELECT al.id, al.employee_db_id, al.time_in, al.time_out, al.closed_by,
-              e.name, e.employee_id, e.role, COALESCE(d.groupno, e.department_id) AS groupno
+              COALESCE(d.fullname, e.name) AS name, e.employee_id, e.role,
+              COALESCE(d.groupno, e.department_id) AS groupno
        FROM attendance_logs al
        JOIN employees e ON al.employee_db_id = e.id
        LEFT JOIN dtr_user d ON e.dtr_user_id = d.PK_user
@@ -238,12 +239,12 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
     if (!type || !['all', 'department'].includes(type)) {
       return res.status(400).json({ message: "Invalid export type. Use 'all' or 'department'." });
     }
+
     // M.69: source selector — default "online" keeps the existing export.
     const parsed = parseSourceParam(req.query.source);
     if (!parsed.ok) {
       return res.status(400).json({ message: "Invalid source. Use 'online', 'biometrics' or 'both'." });
     }
-
 
     // 1. Calculate Date Range — M.39 H1b: Manila calendar windows.
     // Week convention preserved: Monday..Sunday (same rule as before).
@@ -260,6 +261,7 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
       const [phtYear, phtMonth] = philippineDateStr().split("-").map(Number);
       ({ start: startDate, end: endDate } = manilaMonthRange(phtYear, phtMonth));
     }
+
     // M.69 — BIOMETRICS export: native dtr_entry sessions (read-only),
     // labeled with their source and native PK_entry. No online rows, no
     // fabricated durations.
@@ -322,10 +324,10 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
       return;
     }
 
-
     // 2. Fetch Data via MySQL JOIN (with optional deptId filter)
     let sql = `
-      SELECT al.time_in, al.time_out, al.closed_by, e.name, e.employee_id, e.role,
+      SELECT al.time_in, al.time_out, al.closed_by, COALESCE(d.fullname, e.name) AS name,
+             e.employee_id, e.role,
              COALESCE(d.groupno, e.department_id) AS groupno
       FROM attendance_logs al
       JOIN employees e ON al.employee_db_id = e.id
@@ -357,50 +359,19 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
 
     // --- SCENARIO A: EXPORT ALL ---
     if (type === 'all') {
-      const summarySheet = workbook.addWorksheet("Executive Summary");
-      summarySheet.columns = [
-        { header: "Department", key: "dept", width: 25 },
-        { header: "Total Logs", key: "total", width: 15 },
-        { header: "Total Late", key: "late", width: 15 },
-        { header: "Avg Duration (mins)", key: "avg", width: 20 },
-        { header: "Pending Rows", key: "pending", width: 15 }
-      ];
-      
-      const stats = { "All Staff": { total: 0, late: 0, durations: [], pending: 0 } };
-      
-      (rows || []).forEach(r => {
-        stats["All Staff"].total++;
-        // Policy-aware credit: auto-closed rows pending correction contribute
-        // no duration to the average and are counted in "Pending Rows".
-        const credit = rowCredit(r);
-        if (credit.pending) {
-          stats["All Staff"].pending++;
-        } else if (credit.minutes !== null) {
-          stats["All Staff"].durations.push(credit.minutes);
-        }
-        
-        const timeIn = new Date(r.time_in);
-        const phtHour = (timeIn.getUTCHours() + 8) % 24;
-        const phtMinute = timeIn.getUTCMinutes();
-        if (phtHour > 8 || (phtHour === 8 && phtMinute > 30)) {
-          stats["All Staff"].late++;
-        }
-      });
+      // Payroll view: SEPARATED department sheets + a per-department
+      // Executive Summary (the flat "All Attendance Logs" sheet is kept
+      // as an additional combined view).
+      const deptNameById = new Map(getAllDepartments().map((d) => [d.id, d.name]));
+      const deptKeyOf = (r) => deptNameById.get(Number(r.groupno)) || "Unassigned";
+      // Excel sheet names cannot contain : \ / ? * [ ]
+      const sheetNameOf = (n) => n.replace(/[\\\/\?\*\[\]:]/g, "-").substring(0, 31);
 
-      Object.keys(stats).forEach(dept => {
-        const s = stats[dept];
-        const avg = s.durations.length ? (s.durations.reduce((a,b)=>a+b,0)/s.durations.length).toFixed(1) : 0;
-        summarySheet.addRow({ dept, total: s.total, late: s.late, avg, pending: s.pending });
-      });
-
-      summarySheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-      summarySheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF10B981" } };
-
-      const detailSheet = workbook.addWorksheet("All Attendance Logs");
-      detailSheet.columns = [
+      const logColumns = [
         { header: "Employee ID", key: "employee_id", width: 15 },
         { header: "Name", key: "name", width: 25 },
         { header: "Role", key: "role", width: 15 },
+        { header: "Department", key: "department", width: 24 },
         { header: "Date", key: "date", width: 12 },
         { header: "Time In", key: "time_in", width: 15 },
         { header: "Time Out", key: "time_out", width: 15 },
@@ -408,8 +379,7 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
         { header: "Status", key: "status", width: 15 },
         { header: "Closed By", key: "closed_by", width: 18 }
       ];
-
-      (rows || []).forEach(r => {
+      const addLogRow = (sheet, r, departmentLabel) => {
         const credit = rowCredit(r);
         const duration = credit.expired
           ? "—"
@@ -422,11 +392,11 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
         const phtHour = (timeIn.getUTCHours() + 8) % 24;
         const phtMinute = timeIn.getUTCMinutes();
         const isLate = phtHour > 8 || (phtHour === 8 && phtMinute > 30);
-        
-        detailSheet.addRow({
+        sheet.addRow({
           employee_id: r.employee_id,
           name: r.name,
           role: r.role,
+          department: departmentLabel,
           date: manilaDateLabel(r.time_in),
           time_in: manilaTimeLabel(r.time_in),
           time_out: r.time_out ? manilaTimeLabel(r.time_out) : credit.expired ? "NO TIME-OUT" : "Active",
@@ -434,14 +404,88 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
           status: isLate ? "Late" : "On Time",
           closed_by: r.time_out ? closedByLabel(r.closed_by) : credit.expired ? "NO TIME-OUT" : "—"
         });
-      });
-      
-      detailSheet.eachRow((row, i) => {
-        if (i > 1 && row.getCell(8).value === "Late") {
-          row.getCell(8).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "32FFCCCB" } };
-          row.getCell(8).font = { color: { argb: "FFDC2626" } };
+      };
+      const highlightLate = (sheet) => {
+        sheet.eachRow((row, i) => {
+          if (i > 1 && row.getCell(9).value === "Late") {
+            row.getCell(9).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "32FFCCCB" } };
+            row.getCell(9).font = { color: { argb: "FFDC2626" } };
+          }
+        });
+      };
+
+      const summarySheet = workbook.addWorksheet("Executive Summary");
+      summarySheet.columns = [
+        { header: "Department", key: "dept", width: 25 },
+        { header: "Total Logs", key: "total", width: 15 },
+        { header: "Total Late", key: "late", width: 15 },
+        { header: "Avg Duration (mins)", key: "avg", width: 20 },
+        { header: "Pending Rows", key: "pending", width: 15 }
+      ];
+
+      const stats = {};
+      const statOf = (key) =>
+        stats[key] || (stats[key] = { total: 0, late: 0, durations: [], pending: 0 });
+
+      (rows || []).forEach(r => {
+        const s = statOf(deptKeyOf(r));
+        s.total++;
+        // Policy-aware credit: auto-closed rows pending correction contribute
+        // no duration to the average and are counted in "Pending Rows".
+        const credit = rowCredit(r);
+        if (credit.pending) {
+          s.pending++;
+        } else if (credit.minutes !== null) {
+          s.durations.push(credit.minutes);
+        }
+        const timeIn = new Date(r.time_in);
+        const phtHour = (timeIn.getUTCHours() + 8) % 24;
+        const phtMinute = timeIn.getUTCMinutes();
+        if (phtHour > 8 || (phtHour === 8 && phtMinute > 30)) {
+          s.late++;
         }
       });
+
+      const avgOf = (durations) =>
+        durations.length ? (durations.reduce((a, b) => a + b, 0) / durations.length).toFixed(1) : 0;
+      const orderedKeys = [
+        ...getAllDepartments().map((d) => d.name).filter((n) => stats[n]),
+        ...(stats["Unassigned"] ? ["Unassigned"] : [])
+      ];
+      const grand = { total: 0, late: 0, durations: [], pending: 0 };
+      orderedKeys.forEach((dept) => {
+        const s = stats[dept];
+        grand.total += s.total;
+        grand.late += s.late;
+        grand.durations.push(...s.durations);
+        grand.pending += s.pending;
+        summarySheet.addRow({ dept, total: s.total, late: s.late, avg: avgOf(s.durations), pending: s.pending });
+      });
+      summarySheet.addRow({
+        dept: "All Departments",
+        total: grand.total,
+        late: grand.late,
+        avg: avgOf(grand.durations),
+        pending: grand.pending
+      }).font = { bold: true };
+
+      summarySheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      summarySheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF10B981" } };
+
+      // One worksheet per department — the separated department logs.
+      [...getAllDepartments().map((d) => d.name), "Unassigned"].forEach((deptName) => {
+        const deptRows = (rows || []).filter((r) => deptKeyOf(r) === deptName);
+        if (!deptRows.length) return;
+        const sheet = workbook.addWorksheet(sheetNameOf(deptName));
+        sheet.columns = logColumns.map((c) => ({ ...c }));
+        deptRows.forEach((r) => addLogRow(sheet, r, deptName));
+        highlightLate(sheet);
+      });
+
+      const detailSheet = workbook.addWorksheet("All Attendance Logs");
+      detailSheet.columns = logColumns.map((c) => ({ ...c }));
+      (rows || []).forEach(r => addLogRow(detailSheet, r, deptKeyOf(r)));
+      highlightLate(detailSheet);
     } 
     
     // --- SCENARIO B: EXPORT DEPARTMENT ---
@@ -534,6 +578,7 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
         });
       });
     }
+
     // M.69 — BOTH export: the existing Online DTR sheets are kept exactly
     // as-is; two additive sheets show the combined per-day summary with
     // every session preserved (never a fabricated merged range).
@@ -577,7 +622,6 @@ router.get("/export", verifyToken, requireRole("admin"), exportLimiter, async (r
         if (g.reconciliation.state !== "MATCHED") mismatchSheet.addRow(row);
       }
     }
-
 
     // 4. Send File
     res.setHeader(
