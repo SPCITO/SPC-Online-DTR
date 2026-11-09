@@ -23,6 +23,11 @@ export default function AddEmployeePage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
+  // M.45: DTR identity resolution — candidates when the name matches an
+  // existing biometrics/DTR identity (admin decides: link or create new)
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [successDetail, setSuccessDetail] = useState("");
+
   const [formData, setFormData] = useState({
     name: "",
     username: "",
@@ -38,22 +43,41 @@ export default function AddEmployeePage() {
     setError("");
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitForm = async (resolution?: { dtr_user_id?: number; dtr_user_action?: string }) => {
     setLoading(true);
     setError("");
+    setCandidates([]);
 
     try {
-      await api.addEmployee(formData);
+      const payload: any = { ...formData };
+      if (resolution?.dtr_user_id) payload.dtr_user_id = resolution.dtr_user_id;
+      if (resolution?.dtr_user_action) payload.dtr_user_action = resolution.dtr_user_action;
+
+      const created: any = await api.addEmployee(payload);
+      setSuccessDetail(
+        created?.dtr_user_action === "linked"
+          ? `Linked to existing DTR identity #${created?.dtr_user_id}.`
+          : created?.dtr_user_action === "skipped"
+            ? "⚠ DTR identity could NOT be created (database permission pending) — this account is NOT yet visible in the biometrics system."
+            : `DTR identity #${created?.dtr_user_id} created — physical biometric enrollment pending.`
+      );
       setSuccess(true);
       setTimeout(() => {
         router.push("/admin/employees");
-      }, 1500);
+      }, 2500);
     } catch (err: any) {
+      if (err?.data?.code === "DTR_IDENTITY_MATCHES") {
+        setCandidates(err.data.candidates || []);
+      }
       setError(err.message || "Failed to add employee");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitForm();
   };
 
   return (
@@ -112,6 +136,9 @@ export default function AddEmployeePage() {
               </div>
               <h2 className="text-2xl font-bold text-gray-900">Success!</h2>
               <p className="text-gray-500 mt-2">Employee added successfully. Redirecting...</p>
+              {successDetail && (
+                <p className="text-emerald-700 text-sm mt-3 font-medium">{successDetail}</p>
+              )}
             </motion.div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -124,6 +151,59 @@ export default function AddEmployeePage() {
                 >
                   <AlertCircle size={18} className="shrink-0 mt-0.5" />
                   <span>{error}</span>
+                </motion.div>
+              )}
+
+              {candidates.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-sm"
+                >
+                  <p className="font-semibold text-amber-800 mb-3">
+                    Existing DTR/biometrics identities with this name:
+                  </p>
+                  <div className="space-y-2">
+                    {candidates.map((c) => (
+                      <div
+                        key={c.dtr_user_id}
+                        className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-white border border-amber-200"
+                      >
+                        <div className="text-gray-800">
+                          <span className="font-semibold">#{c.dtr_user_id}</span> — {c.fullname}
+                          <span className="text-gray-500">
+                            {" "}· Group {c.groupno} · {c.isactive ? "Active" : "Inactive"}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={loading}
+                          onClick={() => submitForm({ dtr_user_id: c.dtr_user_id })}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold disabled:opacity-60"
+                        >
+                          Link to this identity
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => submitForm({ dtr_user_action: "create_new" })}
+                      className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-900 text-white text-xs font-bold disabled:opacity-60"
+                    >
+                      This is a different person — create a separate DTR identity
+                    </button>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => setCandidates([])}
+                      className="px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-700 text-xs font-bold disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </motion.div>
               )}
 
@@ -195,16 +275,15 @@ export default function AddEmployeePage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-gray-500 ml-1">Email Address</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-gray-500 ml-1">Email Address (optional)</label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                   <input
-                    required
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
                     type="email"
-                    placeholder="john.doe@company.com"
+                    placeholder="Optional — leave blank if none"
                     className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium text-gray-900 placeholder-gray-400"
                   />
                 </div>

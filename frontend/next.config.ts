@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Serve the app under a sub-path when deployed behind a path-based
+  // reverse proxy (e.g. https://spc.gschools.net/dtr). Set at build time
+  // via NEXT_PUBLIC_BASE_PATH — empty string keeps root-path deploys.
+  basePath: process.env.NEXT_PUBLIC_BASE_PATH || "",
   images: {
     remotePatterns: [],
   },

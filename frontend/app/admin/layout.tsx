@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Users,
   Building2,
+  Bell,
   LogOut,
   ShieldCheck,
   Home,
@@ -40,6 +41,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
     { name: "Employees", href: "/admin/employees", icon: Users },
     { name: "Departments", href: "/admin/departments", icon: Building2 },
+    { name: "Notifications", href: "/admin/notifications", icon: Bell },
   ];
 
   const logout = async () => {
@@ -49,7 +51,9 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       console.warn("Logout request failed");
     }
     setSidebarOpen(false);
-    router.replace("/login");
+    // Full-page redirect resets auth context/CSRF state — avoids the login
+    // page bouncing a stale admin back here (401 redirect loop).
+    window.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/login`;
   };
 
   const closeSidebar = () => setSidebarOpen(false);

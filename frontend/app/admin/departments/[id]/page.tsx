@@ -12,7 +12,14 @@ import {
   Users,
   Activity,
   Clock3,
+  Loader2,
 } from "lucide-react";
+import {
+  makeWindowKey,
+  beginRequest,
+  settleRequest,
+  canStartPagination,
+} from "@/lib/paginationGuard";
 
 const DEPARTMENT_NAMES: Record<number, string> = {
   1: "Basic Ed",
@@ -35,6 +42,10 @@ export default function DepartmentPage() {
 
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  // M.72: first-load vs subsequent-refetch distinction, and a failed
+  // request kept distinguishable from a valid empty dataset.
+  const [loadedOnce, setLoadedOnce] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   // M.39: admin Time Out correction control (AUTO / PENDING records)
   const [correctionLog, setCorrectionLog] = useState<any | null>(null);
@@ -58,6 +69,12 @@ export default function DepartmentPage() {
   // repaint after a newer selection.
   const requestSeq = useRef(0);
 
+  // M.72: synchronous pagination guard (see frontend/lib/paginationGuard).
+  const requestCtxRef = useRef<{ key: string; busy: boolean }>({ key: "", busy: false });
+
+  // M.72: window identity a pagination click must match to be legitimate.
+  const windowKey = () => makeWindowKey({ tab, from, to, source });
+
   const PAGE_SIZE = 200;
 
   const rangeParams = () =>
@@ -67,9 +84,16 @@ export default function DepartmentPage() {
 
   const fetchLogs = async (nextPage: number, append: boolean) => {
     const seq = ++requestSeq.current;
+    requestCtxRef.current = beginRequest(windowKey());
     try {
       if (append) setLoadingMore(true);
-      else setLoading(true);
+      else {
+        setLoading(true);
+        // Hide Load More during a window reset so a click mid-refetch can
+        // never append rows from the previous date window.
+        setHasMore(false);
+        setLoadError(false);
+      }
       const data: any = await api.getDepartmentLogsByDepartment(deptId, {
         page: nextPage,
         limit: PAGE_SIZE,
@@ -100,12 +124,36 @@ export default function DepartmentPage() {
       setPage(nextPage);
     } catch (err) {
       console.error(err);
+      // M.72: a failed first-page request must not masquerade as a valid
+      // empty dataset. A failed Load More keeps its already-loaded rows.
+      if (seq === requestSeq.current && !append) setLoadError(true);
     } finally {
       if (seq === requestSeq.current) {
         setLoading(false);
         setLoadingMore(false);
+        setLoadedOnce(true);
+        requestCtxRef.current = settleRequest(requestCtxRef.current);
       }
     }
+  };
+
+  // M.72: handler-side guard — rejects pagination while any request is
+  // pending and never paginates a window the user has already left.
+  const handleLoadMore = () => {
+    const key = windowKey();
+    if (
+      !canStartPagination({
+        guard: requestCtxRef.current,
+        key,
+        loading,
+        fetchingMore: loadingMore,
+        hasMore,
+      })
+    ) {
+      return;
+    }
+    requestCtxRef.current = beginRequest(key);
+    fetchLogs(page + 1, true);
   };
 
   useEffect(() => {
@@ -178,7 +226,10 @@ export default function DepartmentPage() {
       ? "bg-rose-100 text-rose-700"
       : "bg-gray-100 text-gray-600";
 
-  if (loading) {
+  // M.72: full-page "Loading..." only before the FIRST request settles —
+  // later tab/date/source refetches keep the page mounted even when the
+  // previous result was empty.
+  if (loading && !loadedOnce) {
     return (
       <div className="min-h-screen bg-[#f4f7f5] flex items-center justify-center">
         Loading...
@@ -280,7 +331,14 @@ export default function DepartmentPage() {
           ).map((t) => (
             <button
               key={t}
-              onClick={() => setTab(t)}
+              onClick={() => {
+                setTab(t);
+                // A custom from/to window overrides the tabs — clear it so
+                // a tab click always shows that tab's own period (same as
+                // the overview page's filter buttons).
+                setFrom("");
+                setTo("");
+              }}
               className={`
                 px-5 py-3 rounded-2xl font-semibold transition
                 ${
@@ -409,7 +467,26 @@ export default function DepartmentPage() {
 
                 <tbody>
 
-                  {groups.map((g) => (
+                  {loading ? (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center">
+                        <Loader2 className="w-6 h-6 animate-spin text-emerald-600 mx-auto" />
+                        <p className="text-gray-500 mt-2 text-sm font-medium">Loading logs...</p>
+                      </td>
+                    </tr>
+                  ) : loadError ? (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-rose-500 text-sm font-medium">
+                        Failed to load records. Change the filter to try again.
+                      </td>
+                    </tr>
+                  ) : groups.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-gray-400 text-sm">
+                        No records found for this period.
+                      </td>
+                    </tr>
+                  ) : groups.map((g) => (
                     <tr
                       key={`${g.employee_db_id}|${g.date}`}
                       className="border-b border-gray-100 hover:bg-emerald-50/40 transition"
@@ -451,7 +528,26 @@ export default function DepartmentPage() {
 
                 <tbody>
 
-                  {filteredLogs.map((log, i) => {
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center">
+                        <Loader2 className="w-6 h-6 animate-spin text-emerald-600 mx-auto" />
+                        <p className="text-gray-500 mt-2 text-sm font-medium">Loading logs...</p>
+                      </td>
+                    </tr>
+                  ) : loadError ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-rose-500 text-sm font-medium">
+                        Failed to load records. Change the filter to try again.
+                      </td>
+                    </tr>
+                  ) : filteredLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-gray-400 text-sm">
+                        No records found for this period.
+                      </td>
+                    </tr>
+                  ) : filteredLogs.map((log, i) => {
 
                     const status =
                       getStatus(log);
@@ -549,8 +645,8 @@ export default function DepartmentPage() {
             {hasMore && (
               <div className="p-6 border-t border-gray-100 flex justify-center">
                 <button
-                  onClick={() => fetchLogs(page + 1, true)}
-                  disabled={loadingMore}
+                  onClick={handleLoadMore}
+                  disabled={loading || loadingMore || !hasMore}
                   className="px-8 py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-200"
                 >
                   {loadingMore

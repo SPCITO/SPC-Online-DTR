@@ -3,12 +3,13 @@
 import { SourceMode } from "@/lib/types";
 
 const OPTIONS: { value: SourceMode; label: string }[] = [
+  { value: "both", label: "Both / Summary" },
   { value: "online", label: "Online DTR" },
   { value: "biometrics", label: "Biometrics" },
-  { value: "both", label: "Both / Summary" },
 ];
 
-// M.69 — Log Source selector: Online DTR (default) / Biometrics / Both.
+// M.69 — Log Source selector: Both / Summary first, then the separate
+// sources — Online DTR (default) / Biometrics.
 // Desktop: segmented control. Mobile: native select. Additive — pages
 // keep their existing structure around it.
 export default function LogSourceSelector({

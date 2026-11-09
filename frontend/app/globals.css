@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/* M.45f: keep browser-autofilled password text visible on dark cards —
+   Chrome's -webkit-autofill forces its own text color, which made filled
+   values invisible on the change-password card. */
+.cp-input:-webkit-autofill,
+.cp-input:-webkit-autofill:hover,
+.cp-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #f8fafc;
+  -webkit-box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.3) inset;
+  caret-color: #f8fafc;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -23,4 +34,12 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Form controls must stay readable in both OS color schemes: bare
+   inputs/selects inherit body color, which flips to near-white in dark
+   mode and vanishes on the app's always-light form cards. Explicit
+   Tailwind text-* classes (e.g. text-white on dark surfaces) override. */
+input, textarea, select {
+  color: #171717;
 }

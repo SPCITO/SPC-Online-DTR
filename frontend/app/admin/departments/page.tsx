@@ -6,6 +6,12 @@ import { useRouter } from "next/navigation";
 import AttendanceCorrectionModal from "@/components/AttendanceCorrectionModal";
 import LogSourceSelector from "@/components/LogSourceSelector";
 import type { SourceMode, SummaryGroup } from "@/lib/types";
+import {
+  makeWindowKey,
+  beginRequest,
+  settleRequest,
+  canStartPagination,
+} from "@/lib/paginationGuard";
 
 import {
   Search,
@@ -16,6 +22,7 @@ import {
   ChevronRight,
   Loader2,
   FileSpreadsheet,
+  X,
 } from "lucide-react";
 
 // --- CONFIGURATION ---
@@ -32,6 +39,13 @@ const DEPARTMENT_CODES: Record<number, string> = {
   3: "ADMIN",
   4: "SA",
 };
+
+// M.72: pure Both/Summary counting helpers at module scope so the
+// department-stats memo needs no extra dependencies.
+const openSessions = (sessions: Array<{ time_out?: string | null }> | undefined | null) =>
+  (sessions || []).filter((s) => !s.time_out).length;
+const groupOpenCount = (g: SummaryGroup) =>
+  openSessions(g.online) + openSessions(g.biometrics);
 
 type FilterType = "today" | "week" | "month";
 
@@ -53,6 +67,9 @@ export default function AdminDashboardPage() {
 
   // M.69: Log Source selector — online (default) / biometrics / both
   const [source, setSource] = useState<SourceMode>("online");
+  // P1-1: identity namespace for numeric searches ("" = legacy default;
+  // only meaningful for source=online)
+  const [idSpace, setIdSpace] = useState<"" | "app_id" | "school_dtr_id">("");
   const [groups, setGroups] = useState<SummaryGroup[]>([]);
 
   // Pagination State
@@ -60,6 +77,10 @@ export default function AdminDashboardPage() {
   const [limit] = useState(50);
   const [hasMore, setHasMore] = useState(true);
   const [fetchingMore, setFetchingMore] = useState(false);
+  // Full-page spinner only until the FIRST load completes. Later refetches
+  // (filter/date/source changes) keep the page mounted — the table shows
+  // its in-table loading row instead of unmounting the date inputs.
+  const [loadedOnce, setLoadedOnce] = useState(false);
 
   // Debounced Search State
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -67,6 +88,16 @@ export default function AdminDashboardPage() {
   // M.70: request sequencing — a slower response from a previous source
   // selection must never repaint stale attendance data.
   const requestSeq = useRef(0);
+
+  // M.72: synchronous pagination guard. State flags only update after the
+  // fetch effect flushes; this ref closes the render-lag interval so a
+  // Load More click can never paginate a window the user has left or fire
+  // while another request is pending.
+  const requestCtxRef = useRef<{ key: string; busy: boolean }>({ key: "", busy: false });
+
+  // M.72: window identity a pagination click must match to be legitimate.
+  const windowKey = () =>
+    makeWindowKey({ search: debouncedSearch, filter, from, to, source, idSpace });
 
   // ✅ FIX 1: Debounce Search Input Only
   useEffect(() => {
@@ -82,10 +113,12 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     const fetchLogs = async () => {
       const seq = ++requestSeq.current;
+      requestCtxRef.current = beginRequest(windowKey());
       if (page === 1) {
         setLoading(true);
-        setLogs([]); // Clear list for new search/page 1
-        setGroups([]);
+        // Hide Load More during a window reset so a click mid-refetch can
+        // never append rows from the previous date window.
+        setHasMore(false);
       } else {
         setFetchingMore(true);
       }
@@ -117,7 +150,14 @@ export default function AdminDashboardPage() {
           return;
         }
 
-        const data = await api.getLogs(page, limit, debouncedSearch, rangeArgs, source);
+        const data = await api.getLogs(
+          page,
+          limit,
+          debouncedSearch,
+          rangeArgs,
+          source,
+          source === "online" ? idSpace || undefined : undefined
+        );
         if (seq !== requestSeq.current) return;
         const newLogs: any[] = Array.isArray(data) ? data : [];
 
@@ -142,21 +182,47 @@ export default function AdminDashboardPage() {
         if (seq === requestSeq.current) {
           setLoading(false);
           setFetchingMore(false);
+          setLoadedOnce(true);
+          requestCtxRef.current = settleRequest(requestCtxRef.current);
         }
       }
     };
     fetchLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, page, limit, filter, from, to, source]);
+  }, [debouncedSearch, page, limit, filter, from, to, source, idSpace]);
 
   const handleLoadMore = () => {
-    if (!fetchingMore && hasMore) {
-      setPage((prev) => prev + 1);
+    const key = windowKey();
+    // M.72: handler-side rejection independent of button state — the
+    // click may land before the effect flushes its state updates.
+    if (
+      !canStartPagination({
+        guard: requestCtxRef.current,
+        key,
+        loading,
+        fetchingMore,
+        hasMore,
+      })
+    ) {
+      return;
     }
+    requestCtxRef.current = beginRequest(key);
+    setPage((prev) => prev + 1);
   };
 
   // The date window is applied server-side — display exactly what was loaded.
   const filteredLogs = logs;
+
+  // M.69/f36d597 both-mode semantics (matching the department detail page):
+  // in Both/Summary the table lists reconciliation GROUPS, so the cards
+  // count groups (a multi-source day counts once) — never the `logs` array,
+  // which stays empty in that mode. (openSessions/groupOpenCount live at
+  // module scope — M.72.)
+  const totalShown = source === "both" ? groups.length : filteredLogs.length;
+  const activeShown =
+    source === "both"
+      ? groups.reduce((n, g) => n + groupOpenCount(g), 0)
+      : filteredLogs.filter((l) => !l.time_out).length;
 
   // HELPERS
   // Attendance completion state (M.61): ACTIVE = open record, COMPLETED =
@@ -223,6 +289,17 @@ export default function AdminDashboardPage() {
 
   const getDepartmentStats = useMemo(() => {
     return Object.entries(DEPARTMENT_NAMES).map(([id, name]) => {
+      if (source === "both") {
+        const deptGroups = groups.filter(
+          (g) => Number(g.department_id) === Number(id)
+        );
+        return {
+          id: Number(id),
+          name,
+          total: deptGroups.length,
+          active: deptGroups.reduce((n, g) => n + groupOpenCount(g), 0),
+        };
+      }
       const deptLogs = filteredLogs.filter((log) => Number(log.department_id) === Number(id));
       return {
         id: Number(id),
@@ -231,7 +308,7 @@ export default function AdminDashboardPage() {
         active: deptLogs.filter((l) => !l.time_out).length,
       };
     });
-  }, [filteredLogs]);
+  }, [filteredLogs, groups, source]);
 
   // Server-side export: complete data for the selected window — payroll
   // basis must never be limited by what the table has loaded.
@@ -275,7 +352,7 @@ export default function AdminDashboardPage() {
     }
   };
 
-  if (loading) {
+  if (loading && !loadedOnce) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f4f7f5] text-gray-500">
         <Loader2 className="w-10 h-10 animate-spin text-emerald-600" />
@@ -303,8 +380,8 @@ export default function AdminDashboardPage() {
         {/* TOP STATS */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {[
-            { label: "Total Logs", value: filteredLogs.length, icon: Users, color: "bg-emerald-100 text-emerald-600" },
-            { label: "Active Now", value: filteredLogs.filter(l => !l.time_out).length, icon: Activity, color: "bg-blue-100 text-blue-600" },
+            { label: "Total Logs", value: totalShown, icon: Users, color: "bg-emerald-100 text-emerald-600" },
+            { label: "Active Now", value: activeShown, icon: Activity, color: "bg-blue-100 text-blue-600" },
           ].map((stat, i) => (
             <div key={i} className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between">
@@ -378,6 +455,24 @@ export default function AdminDashboardPage() {
               />
             </div>
 
+            {/* P1-1: pick which ID namespace a numeric search matches.
+                School DTR IDs and app account IDs are different number
+                spaces — never interpret one as the other. */}
+            <select
+              value={idSpace}
+              onChange={(e) => {
+                setIdSpace(e.target.value as "" | "app_id" | "school_dtr_id");
+                setPage(1);
+              }}
+              disabled={source !== "online"}
+              title="Which ID number the search box matches (names always match the display name)"
+              className="px-3 py-3 rounded-2xl border border-gray-200 bg-gray-50 text-sm text-gray-600 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all disabled:opacity-50"
+            >
+              <option value="">Name / App ID (default)</option>
+              <option value="app_id">App account ID</option>
+              <option value="school_dtr_id">School DTR ID</option>
+            </select>
+
             <div className="flex gap-3 flex-wrap items-center">
               {(["today", "week", "month"] as FilterType[]).map((f) => (
                 <button
@@ -419,6 +514,19 @@ export default function AdminDashboardPage() {
                 className="px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-900"
                 title="To date (overrides the filter buttons)"
               />
+              {(from || to) && (
+                <button
+                  onClick={() => {
+                    setFrom("");
+                    setTo("");
+                    setPage(1);
+                  }}
+                  className="p-2.5 rounded-xl bg-white border border-gray-200 text-gray-500 hover:text-red-500 hover:border-red-200 transition-colors"
+                  title="Clear date window"
+                >
+                  <X size={16} />
+                </button>
+              )}
 
               <div className="h-8 w-px bg-gray-200 mx-1 hidden lg:block" />
 
@@ -587,7 +695,7 @@ export default function AdminDashboardPage() {
             <div className="p-6 border-t border-gray-100 flex justify-center">
               <button
                 onClick={handleLoadMore}
-                disabled={fetchingMore}
+                disabled={loading || fetchingMore || !hasMore}
                 className="px-8 py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-200 flex items-center gap-2"
               >
                 {fetchingMore ? <Loader2 size={18} className="animate-spin" /> : <Users size={18} />}

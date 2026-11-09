@@ -65,10 +65,16 @@ function ChangePasswordContent() {
     try {
       setLoading(true);
 
-      await api.changePassword({
+      // M.45f: never claim success without a positive server confirmation —
+      // a swallowed error used to fake success and strand users in a loop.
+      const res: any = await api.changePassword({
         currentPassword,
         newPassword,
       });
+
+      if (!res?.success) {
+        throw new Error("Password change did not complete. Please try again.");
+      }
 
       toast.success("Password updated successfully");
 
@@ -134,11 +140,13 @@ function ChangePasswordContent() {
 
             <input
               type={showCurrent ? "text" : "password"}
+              name="currentPassword"
+              autoComplete="current-password"
               placeholder="Current password"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
               style={{ color: "#f8fafc" }}
-              className="w-full pl-10 pr-10 py-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none text-white placeholder:text-gray-400!"
+              className="cp-input w-full pl-10 pr-10 py-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none text-white placeholder:text-gray-400!"
             />
 
             <button
@@ -156,11 +164,13 @@ function ChangePasswordContent() {
 
             <input
               type={showNew ? "text" : "password"}
+              name="newPassword"
+              autoComplete="new-password"
               placeholder="New password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               style={{ color: "#f8fafc" }}
-              className="w-full pl-10 pr-10 py-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none text-white placeholder:text-gray-400!"
+              className="cp-input w-full pl-10 pr-10 py-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none text-white placeholder:text-gray-400!"
             />
 
             <button
@@ -203,11 +213,13 @@ function ChangePasswordContent() {
 
             <input
               type={showConfirm ? "text" : "password"}
+              name="confirmPassword"
+              autoComplete="new-password"
               placeholder="Confirm password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               style={{ color: "#f8fafc" }}
-              className="w-full pl-10 pr-10 py-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none text-white placeholder:text-gray-400!"
+              className="cp-input w-full pl-10 pr-10 py-3 rounded-xl bg-black/30 border border-white/10 focus:border-emerald-400 outline-none text-white placeholder:text-gray-400!"
             />
 
             <button

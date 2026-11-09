@@ -60,7 +60,7 @@ export default function LandingPage() {
               "
             >
               <img
-                src="/spc logo.png"
+                src={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/spc logo.png`}
                 alt="SPC Logo"
                 className="w-9 h-9 object-contain"
               />

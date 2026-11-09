@@ -207,7 +207,7 @@ function DashboardContent() {
           `You have an open session from ${err.data.day} with no Time Out recorded.\n\n` +
             "• If you FORGOT to time out — press OK to start today's session. " +
             "That record stays blank \"No Time Out\" and must be corrected via a " +
-            "DTR Correction Form with the Payroll Department.\n" +
+            "DTR Correction Form with HR.\n" +
             "• If your shift is still ongoing — press Cancel and use Time Out instead."
         );
         if (!go) return;
@@ -217,7 +217,7 @@ function DashboardContent() {
       if (res?.abandoned_previous_days?.length) {
         toast.success(
           "Time In recorded. Your earlier record(s) stay blank \"No Time Out\" — " +
-            "please accomplish a DTR Correction Form with Payroll for those day(s).",
+            "please accomplish a DTR Correction Form with HR for those day(s).",
           { duration: 10000 }
         );
       } else {
@@ -244,7 +244,7 @@ function DashboardContent() {
           "• If your shift is still ongoing — press OK to record the Time Out now.\n" +
           "• If you FORGOT to time out that day — press Cancel and use \"Time In (New Day)\" " +
           "instead. That record stays blank \"No Time Out\" and must be corrected via a " +
-          "DTR Correction Form with the Payroll Department."
+          "DTR Correction Form with HR."
       );
       if (!go) return;
     }
@@ -614,8 +614,7 @@ function DashboardContent() {
                           has passed. This record is now marked "No Time Out"
                           and can no longer be timed out — but you can still
                           Time In for your new shift below. For the missed
-                          record, please file a DTR Correction Form with the
-                          Payroll Department.
+                          record, please file a DTR Correction Form with HR.
                         </p>
                       )}
 
@@ -625,7 +624,7 @@ function DashboardContent() {
                           use "Time In (New Day)" below to start today's
                           session; the earlier record stays blank "No Time
                           Out" and must be corrected via a DTR Correction
-                          Form with the Payroll Department. If your shift is
+                          Form with HR. If your shift is
                           still ongoing, use Time Out instead.
                         </p>
                       )}
@@ -635,7 +634,7 @@ function DashboardContent() {
                           Record(s) with no Time Out:{" "}
                           {noTimeoutDays.filter((d) => d !== openDay).join(", ")} —
                           these show blank hours and need a DTR Correction Form
-                          with the Payroll Department.
+                          with HR.
                         </p>
                       )}
 

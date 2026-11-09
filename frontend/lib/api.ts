@@ -160,7 +160,8 @@ export const api = {
     limit = 50,
     search = "",
     range?: { dateRange?: string; from?: string; to?: string },
-    source?: SourceMode
+    source?: SourceMode,
+    idSpace?: "app_id" | "school_dtr_id"
   ) => {
     const queryParams = new URLSearchParams();
     queryParams.append("page", page.toString());
@@ -171,6 +172,9 @@ export const api = {
     if (range?.to) queryParams.append("to", range.to);
     // M.69: source selector — omitted/`online` keeps existing behavior
     if (source && source !== "online") queryParams.append("source", source);
+    // P1-1: identity namespace for numeric search — omitted keeps the
+    // legacy semantics (numeric term = display name LIKE OR app account id).
+    if (idSpace) queryParams.append("id_space", idSpace);
     return request(`/logs?${queryParams.toString()}`);
   },
 
