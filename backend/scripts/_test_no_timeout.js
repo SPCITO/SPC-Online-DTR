@@ -175,7 +175,8 @@ check("labels: USER / AUTO / ADMIN-CORRECTED", closedByLabel("user") === "USER" 
   check("notice email is professional + points to the DTR Correction Form",
     mail.subject.includes("Missing Time Out") &&
     mail.text.includes("DTR Correction Form") &&
-    mail.text.includes("Payroll Department") &&
+    mail.text.includes("HR") &&
+    mail.text.includes("IT Office") &&
     mail.text.includes("October 4, 2026"),
     mail.subject);
 }
