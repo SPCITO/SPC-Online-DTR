@@ -55,3 +55,4 @@ backend/sync/sync_state_test.db
 backend/sync/sync_state_test.db-wal
 backend/sync/sync_state_test.db-shm
 ```
+SERVER
