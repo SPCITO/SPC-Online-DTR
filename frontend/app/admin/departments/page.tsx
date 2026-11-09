@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import AttendanceCorrectionModal from "@/components/AttendanceCorrectionModal";
 import LogSourceSelector from "@/components/LogSourceSelector";
 import type { SourceMode, SummaryGroup } from "@/lib/types";
+import { toDate, getWorkHours } from "@/lib/workHours";
 import {
   makeWindowKey,
   beginRequest,
@@ -232,28 +233,11 @@ export default function AdminDashboardPage() {
     return "COMPLETED";
   };
 
-  // M.69: timestamps may be ISO strings (Online DTR) or Manila wall
-  // strings ("YYYY-MM-DD HH:MM:SS", Biometrics) — parse both safely.
-  const toDate = (v: string | Date | null | undefined): Date | null => {
-    if (!v) return null;
-    if (typeof v === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(v)) {
-      return new Date(v.replace(" ", "T") + "+08:00");
-    }
-    return new Date(v);
-  };
+  // Timestamp parsing (toDate) and work-hours span (getWorkHours) live
+  // in @/lib/workHours — M.135: null-safe and covered by regression tests.
   const fmtDT = (v: string | Date | null | undefined) => {
     const d = toDate(v);
     return d ? d.toLocaleString() : "--";
-  };
-
-  const getWorkHours = (log: any) => {
-    if (!log.time_out) return "--";
-    // AUTO rows awaiting correction carry NO credited hours (Policy A).
-    if (log.pending) return "Pending";
-    const diff = (toDate(log.time_out)!.getTime() - toDate(log.time_in)!.getTime());
-    const hrs = Math.floor(diff / 3600000);
-    const mins = Math.floor((diff % 3600000) / 60000);
-    return `${hrs}h ${mins}m`;
   };
 
   // M.69: one line per source session — multi-session days keep every
