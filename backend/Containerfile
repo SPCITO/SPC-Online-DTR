@@ -1,0 +1,30 @@
+# SPC Online DTR — API (Express)
+#
+# Build (on spcwebhost):
+#   podman build -t localhost/spc-dtr-api:latest -f backend/Containerfile backend/
+#
+# Runtime env comes from /srv/apps/smart-school/env/dtr-api.env (see SERVER.md).
+
+# ── Build stage: install production dependencies ──────────────────────────
+# Full node image so better-sqlite3 (sync agent state) can compile from
+# source if no prebuilt binary is available.
+FROM docker.io/library/node:22-bookworm AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+# ── Runtime stage ─────────────────────────────────────────────────────────
+FROM docker.io/library/node:22-bookworm-slim
+ENV NODE_ENV=production \
+    PORT=5000
+WORKDIR /app
+
+COPY --from=build /app/node_modules ./node_modules
+COPY . .
+
+# Persistent dir for the sync agent's SQLite state (bind-mounted at run)
+RUN mkdir -p /app/sync-state && chown -R node:node /app
+USER node
+
+EXPOSE 5000
+CMD ["node", "server.js"]

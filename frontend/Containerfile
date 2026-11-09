@@ -1,0 +1,44 @@
+# SPC Online DTR — Web (Next.js)
+#
+# Build (on spcwebhost):
+#   podman build -t localhost/spc-dtr-web:latest \
+#     --build-arg NEXT_PUBLIC_BASE_PATH=/dtr \
+#     --build-arg NEXT_PUBLIC_API_URL=/dtr/api \
+#     -f frontend/Containerfile frontend/
+#
+# NOTE: NEXT_PUBLIC_* values are inlined into the client bundle at BUILD
+# time — changing them requires a rebuild.
+
+# ── Build stage ───────────────────────────────────────────────────────────
+FROM docker.io/library/node:22-bookworm AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+
+ARG NEXT_PUBLIC_BASE_PATH=/dtr
+ARG NEXT_PUBLIC_API_URL=/dtr/api
+ENV NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH} \
+    NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
+RUN npm run build
+
+# ── Runtime stage ─────────────────────────────────────────────────────────
+# NOTE: next.config.ts reads NEXT_PUBLIC_BASE_PATH at RUNTIME for routing
+# too — it must be present here, not only at build time.
+FROM docker.io/library/node:22-bookworm-slim
+ARG NEXT_PUBLIC_BASE_PATH=/dtr
+ARG NEXT_PUBLIC_API_URL=/dtr/api
+ENV NODE_ENV=production \
+    HOSTNAME=0.0.0.0 \
+    PORT=3000 \
+    NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH} \
+    NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+WORKDIR /app
+
+COPY --from=build /app /app
+RUN chown -R node:node /app
+USER node
+
+EXPOSE 3000
+CMD ["npm", "run", "start"]
