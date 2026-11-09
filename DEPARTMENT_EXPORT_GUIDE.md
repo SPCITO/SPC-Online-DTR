@@ -99,6 +99,13 @@ GET /api/departments/export?deptId={id}&dateRange={today|week|month}
 - Pre-formatted data ready for Excel generation
 - Returns metadata (filename, count, export timestamp)
 
+**Workbook Structure (`type=all` — "Export All Data"):**
+1. `Executive Summary` — one row PER DEPARTMENT (Total Logs, Total Late, Avg Duration, Pending Rows) plus an `All Departments` total row
+2. One worksheet PER DEPARTMENT (Basic Education, Collegiate, Administrative - Personnel, Student Assistant, and Unassigned when present) containing that department's logs
+3. `All Attendance Logs` — combined flat sheet kept as an additional view (includes a Department column)
+
+**Workbook Structure (`type=department`):** `Employee Summary` + `Daily Breakdown`
+
 **Response Structure:**
 ```json
 {
